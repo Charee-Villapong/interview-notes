@@ -80,9 +80,7 @@ def test_find_audio_files_detects_each_extension(tmp_path, filename):
     assert find_audio_files([target]) == [target]
 
 
-@pytest.mark.parametrize(
-    "filename", ["TAKE.M4A", "Take.WAV", "take.MP4", "take.Mp3"]
-)
+@pytest.mark.parametrize("filename", ["TAKE.M4A", "Take.WAV", "take.MP4", "take.Mp3"])
 def test_find_audio_files_is_case_insensitive(tmp_path, filename):
     """拡張子の判定は大文字小文字を区別しない。"""
     from interview_pipeline.guards import find_audio_files
@@ -313,7 +311,7 @@ def test_mac_not_eligible_for_30_day_old_unprocessed(make_store, t0):
     from interview_pipeline.guards import mac_deletion_eligible
 
     old = t0 - timedelta(days=30)
-    store, _session = _session(make_store, t0, created_at=old)
+    store, _ = _session(make_store, t0, created_at=old)
     # recorded から直接 needs_reprocess へ（任意→needs_reprocess）。
     store.transition(SID, _needs_reprocess_state())
     session = store.get(SID)
@@ -346,9 +344,7 @@ def test_mac_eligible_for_old_final_saved_session(make_store, drive_to, t0):
 # ---------------------------------------------------------------------------
 
 
-def test_find_overdue_unprocessed_detects_old_unfinished(
-    make_store, drive_to, t0
-):
+def test_find_overdue_unprocessed_detects_old_unfinished(make_store, drive_to, t0):
     """録音から7日超＋final_saved 未到達は「期限超過の未処理」に挙がる。"""
     from interview_pipeline.guards import find_overdue_unprocessed
 
@@ -360,9 +356,7 @@ def test_find_overdue_unprocessed_detects_old_unfinished(
     assert [s.session_id for s in overdue] == [SID]
 
 
-def test_find_overdue_unprocessed_includes_old_needs_reprocess(
-    make_store, t0
-):
+def test_find_overdue_unprocessed_includes_old_needs_reprocess(make_store, t0):
     """古い needs_reprocess（未処理）も検出対象に含まれる。"""
     from interview_pipeline.guards import find_overdue_unprocessed
 
@@ -384,9 +378,7 @@ def test_find_overdue_unprocessed_excludes_recent(make_store, t0):
     assert find_overdue_unprocessed(store, now) == []
 
 
-def test_find_overdue_unprocessed_excludes_final_saved(
-    make_store, drive_to, t0
-):
+def test_find_overdue_unprocessed_excludes_final_saved(make_store, drive_to, t0):
     """古くても final_saved 到達済みは挙がらない。"""
     from interview_pipeline.guards import find_overdue_unprocessed
 
@@ -409,9 +401,7 @@ def test_find_overdue_unprocessed_respects_days_argument(make_store, t0):
     assert [s.session_id for s in overdue] == [SID]
 
 
-def test_find_overdue_unprocessed_is_visualization_only(
-    make_store, state_name, t0
-):
+def test_find_overdue_unprocessed_is_visualization_only(make_store, state_name, t0):
     """検出は可視化専用で、セッションの状態や削除記録を変えない。"""
     from interview_pipeline.guards import find_overdue_unprocessed
 

@@ -150,9 +150,7 @@ def test_save_draft_without_draft_marking_rejected(
     assert state_name(session.state) != "awaiting_review"
 
 
-def test_save_draft_marking_must_be_at_top(
-    make_store, drive_to, exc, t0, tmp_path
-):
+def test_save_draft_marking_must_be_at_top(make_store, drive_to, exc, t0, tmp_path):
     """表記が本文の途中にあるだけでは不十分（冒頭にあること）。"""
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     content = "# 面談メモ\n\n本文の途中に 下書き（未照合） と書いただけ。\n"

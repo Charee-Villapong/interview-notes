@@ -80,9 +80,7 @@ def _read_log_lines(log_path: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def test_event_log_appends_one_json_line_per_record(
-    make_event_log, state_of, tmp_path
-):
+def test_event_log_appends_one_json_line_per_record(make_event_log, state_of, tmp_path):
     """record は JSONL に1行ずつ追記する。"""
     log_path = tmp_path / "events.jsonl"
     event_log = make_event_log(log_path)
@@ -99,9 +97,7 @@ def test_event_log_appends_one_json_line_per_record(
     assert "dummy_error" in lines[1]
 
 
-def test_event_log_records_only_allowed_fields(
-    make_event_log, state_of, tmp_path
-):
+def test_event_log_records_only_allowed_fields(make_event_log, state_of, tmp_path):
     """1行の記録項目は日付・セッションID・状態・エラー種別のみ。"""
     log_path = tmp_path / "events.jsonl"
     event_log = make_event_log(log_path)
@@ -111,9 +107,9 @@ def test_event_log_records_only_allowed_fields(
 
     (line,) = _read_log_lines(log_path)
     record = json.loads(line)
-    assert set(record.keys()) <= ALLOWED_LOG_KEYS, (
-        f"許可されていない記録項目があります: {set(record.keys())}"
-    )
+    assert (
+        set(record.keys()) <= ALLOWED_LOG_KEYS
+    ), f"許可されていない記録項目があります: {set(record.keys())}"
     values = {str(v) for v in record.values()}
     assert SID in values
     assert "needs_reprocess" in values
@@ -126,8 +122,14 @@ def test_event_log_records_only_allowed_fields(
 
 
 def test_run_processes_received_session_to_awaiting_editing(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """received は文字起こし→合成→作業用テキスト生成を経て awaiting_editing。"""
     store = make_store()
@@ -152,8 +154,14 @@ def test_run_processes_received_session_to_awaiting_editing(
 
 
 def test_run_verifies_transferring_session_with_manifest(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """transferring はマニフェスト検証で昇格する（received 以降へ進む）。"""
     store = make_store()
@@ -178,8 +186,14 @@ def test_run_verifies_transferring_session_with_manifest(
 
 
 def test_run_transferring_with_bad_manifest_becomes_needs_reprocess(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """検証不一致の transferring は needs_reprocess になりログに残る。"""
     store = make_store()
@@ -204,8 +218,14 @@ def test_run_transferring_with_bad_manifest_becomes_needs_reprocess(
 
 
 def test_run_scans_all_sessions(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """全件走査: 複数の received が1ランでまとめて処理される。"""
     store = make_store()
@@ -225,8 +245,14 @@ def test_run_scans_all_sessions(
 
 
 def test_run_leaves_unprocessable_states_untouched(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """処理対象外の状態（recorded / awaiting_review 等）は変化しない。"""
     store = make_store()
@@ -253,8 +279,14 @@ def test_run_leaves_unprocessable_states_untouched(
 
 
 def test_run_failure_isolated_to_failing_session(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """1件失敗しても他件の処理は止まらず、失敗件は needs_reprocess。"""
     store = make_store()
@@ -283,8 +315,14 @@ def test_run_failure_isolated_to_failing_session(
 
 
 def test_run_failure_log_contains_no_content(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """失敗ログに本文や例外メッセージ等の内容が含まれない。"""
     secret = "-".join(["SECRET", "CANARY", "MUST", "NOT", "APPEAR"])
@@ -310,8 +348,14 @@ def test_run_failure_log_contains_no_content(
 
 
 def test_needs_reprocess_session_is_retried_next_run(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """needs_reprocess の件は次のランで再び対象になり、成功すれば進む。"""
     store = make_store()
@@ -322,9 +366,7 @@ def test_needs_reprocess_session_is_retried_next_run(
     log_path = tmp_path / "events.jsonl"
     event_log = make_event_log(log_path)
 
-    first = _run(
-        store, roots, make_transcriber(fail_marker=SID), event_log
-    )
+    first = _run(store, roots, make_transcriber(fail_marker=SID), event_log)
     assert state_name(store.get(SID).state) == "needs_reprocess"
     assert SID in first.failed
 
@@ -334,8 +376,14 @@ def test_needs_reprocess_session_is_retried_next_run(
 
 
 def test_needs_reprocess_has_no_retry_limit(
-    make_store, drive_to, make_transcriber, make_event_log, filekit,
-    state_name, t0, tmp_path
+    make_store,
+    drive_to,
+    make_transcriber,
+    make_event_log,
+    filekit,
+    state_name,
+    t0,
+    tmp_path,
 ):
     """再試行に上限はなく、失敗し続ける件は毎ラン対象であり続ける。"""
     store = make_store()
@@ -366,9 +414,7 @@ def test_run_with_unavailable_transcriber_never_succeeds(
     _put_inbox_files(filekit, roots[1], SID)
     log_path = tmp_path / "events.jsonl"
 
-    report = _run(
-        store, roots, UnavailableTranscriber(), make_event_log(log_path)
-    )
+    report = _run(store, roots, UnavailableTranscriber(), make_event_log(log_path))
 
     session = store.get(SID)
     assert state_name(session.state) == "needs_reprocess"

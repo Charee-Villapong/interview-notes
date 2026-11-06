@@ -47,9 +47,7 @@ def test_success_promotes_to_inbox_and_received(
     """全ファイル一致した時だけ inbox へ昇格し received になる。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     manifest = Manifest.from_dict(filekit.manifest_dict(SID, FILES))
@@ -72,9 +70,7 @@ def test_sha256_mismatch_blocks_promotion(
     """SHA-256 不一致なら inbox へ移さず needs_reprocess になる。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     data = filekit.manifest_dict(SID, FILES)
@@ -98,9 +94,7 @@ def test_size_mismatch_blocks_promotion(
     """サイズ不一致なら inbox へ移さず needs_reprocess になる。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     data = filekit.manifest_dict(SID, FILES)
@@ -123,9 +117,7 @@ def test_tampered_content_blocks_promotion(
     """ステージング側の内容が化けていれば（サイズ同・中身違い）拒否する。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     # mic 側だけ、同じ長さの別内容を置く（SHA-256 で検出されるはず）。
     tampered = b"X" * len(MIC_DATA)
     filekit.write(staging_dir / "system_track.m4a", SYSTEM_DATA)
@@ -145,9 +137,7 @@ def test_missing_file_blocks_promotion(
     """マニフェストにあるファイルが欠落していれば拒否する。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     filekit.write(staging_dir / "system_track.m4a", SYSTEM_DATA)
     # mic_track.m4a は置かない（欠落）。
     manifest = Manifest.from_dict(filekit.manifest_dict(SID, FILES))
@@ -168,9 +158,7 @@ def test_one_bad_file_blocks_all_files(
     """1件でも不一致なら、正常なファイルも inbox へ移さない（全-or-無）。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     data = filekit.manifest_dict(SID, FILES)
@@ -189,9 +177,7 @@ def test_receive_is_idempotent_after_received(
     """received 以降のセッションへの再呼び出しは冪等に ok=True。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     manifest = Manifest.from_dict(filekit.manifest_dict(SID, FILES))
@@ -211,16 +197,12 @@ def test_reverification_after_failure_creates_no_duplicate(
     """失敗後の再受信・再検証でもレコードは1件のまま received になれる。"""
     from interview_pipeline.manifest import Manifest
 
-    store, staging_dir, inbox_dir = _setup_session(
-        make_store, drive_to, t0, tmp_path
-    )
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
     for name, data in FILES:
         filekit.write(staging_dir / name, data)
     bad = filekit.manifest_dict(SID, FILES)
     bad["files"][0]["sha256"] = "0" * 64
-    failed = _promote(
-        store, Manifest.from_dict(bad), staging_dir, inbox_dir
-    )
+    failed = _promote(store, Manifest.from_dict(bad), staging_dir, inbox_dir)
     assert failed.ok is False
     assert state_name(store.get(SID).state) == "needs_reprocess"
 

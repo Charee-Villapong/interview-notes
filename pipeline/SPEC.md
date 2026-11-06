@@ -71,7 +71,7 @@
 ### `saving.py`
 
 - `save_draft(store, session_id, draft_path, notes_dir, *, privacy_checker) -> Path`
-  - 保存前に `assert_no_audio_files`（対象はドラフトと notes_dir へ置く全ファイル）を通す。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する
+  - 保存前に `assert_no_audio_files` を通す。チェック対象は「この保存で配置する全ファイル」（現行APIではドラフト本体。配置先のファイル名は `<session_id>.md` 固定で、保存処理がドラフト以外を配置することはない）。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。なお、リポジトリ側の第二の防壁として、音声・動画拡張子は `.gitignore` でも除外されている
   - `privacy_checker()` が False なら保存せず `RepositoryNotPrivateError` を送出する（保存先が非公開であることの確認）
   - 成功時は md を `notes_dir/<日付>/<session_id>.md` へ配置し（下書き表記の検査：冒頭に「下書き（未照合）」を含むこと。含まなければ `DraftMarkingError`）、状態を `draft_saved` → `awaiting_review` へ進める
 

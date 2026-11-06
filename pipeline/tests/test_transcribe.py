@@ -84,14 +84,10 @@ def test_merge_tracks_with_empty_inputs():
     assert merge_tracks([], []) == []
 
     only_mic = merge_tracks([], [_segment(0.0, 1.0, "mic-only")])
-    assert [(label, seg.text) for label, seg in only_mic] == [
-        ("A", "mic-only")
-    ]
+    assert [(label, seg.text) for label, seg in only_mic] == [("A", "mic-only")]
 
     only_system = merge_tracks([_segment(0.0, 1.0, "sys-only")], [])
-    assert [(label, seg.text) for label, seg in only_system] == [
-        ("B", "sys-only")
-    ]
+    assert [(label, seg.text) for label, seg in only_system] == [("B", "sys-only")]
 
 
 def test_unavailable_transcriber_always_raises(exc, tmp_path):

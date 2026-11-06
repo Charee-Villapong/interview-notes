@@ -105,7 +105,7 @@ def test_state_enum_matches_state_table(state_of, state_name):
 
 def test_transitions_table_structure(state_of, state_name):
     """TRANSITIONS は State をキーとし、許可先の集合を持つ。"""
-    from interview_pipeline.states import State, TRANSITIONS
+    from interview_pipeline.states import TRANSITIONS, State
 
     assert isinstance(TRANSITIONS, dict)
     for src, destinations in TRANSITIONS.items():
@@ -114,9 +114,9 @@ def test_transitions_table_structure(state_of, state_name):
             assert isinstance(dst, State)
     # 表の許可遷移はすべて TRANSITIONS に現れる。
     for src_name, dst_name in ALLOWED_TRANSITIONS:
-        assert state_of(dst_name) in TRANSITIONS.get(state_of(src_name), set()), (
-            f"TRANSITIONS に {src_name} -> {dst_name} がありません"
-        )
+        assert state_of(dst_name) in TRANSITIONS.get(
+            state_of(src_name), set()
+        ), f"TRANSITIONS に {src_name} -> {dst_name} がありません"
 
 
 @pytest.mark.parametrize("src_name,dst_name", ALLOWED_TRANSITIONS)

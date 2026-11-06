@@ -135,9 +135,7 @@ def test_transition_to_needs_reprocess_records_error_and_resume(
     assert state_name(session.resume_state) == "received"
 
 
-def test_state_persists_across_store_reload(
-    make_store, drive_to, state_name, t0
-):
+def test_state_persists_across_store_reload(make_store, drive_to, state_name, t0):
     """状態は永続化され、ストアを再読み込みしても再開できる。"""
     store = make_store("persist.json")
     store.register(SID, t0)

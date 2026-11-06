@@ -190,11 +190,31 @@ def make_store(tmp_path):
 
 
 @pytest.fixture
-def drive_to(state_of):
-    """セッションを正規の遷移経路で目標状態まで進める関数を返す。"""
+def drive_to(state_of, state_name):
+    """セッションを正規の遷移経路で目標状態まで進める関数を返す。
+
+    状態認識型: セッションの現在状態を読み、目標状態への経路
+    （``_DRIVE_PATHS[target]``）上で現在状態より後ろのステップだけを
+    実行する。これにより、同じセッションへ累積で複数回呼んでも
+    通過済みステップへの後戻り遷移が発生しない。現在状態が経路に
+    無い場合（``needs_reprocess`` 等）は従来どおり全ステップを実行する。
+    """
 
     def _drive_to(store, session_id: str, target: str) -> None:
-        for step in _DRIVE_PATHS[target]:
+        path = _DRIVE_PATHS[target]
+        try:
+            current = state_name(store.get(session_id).state)
+            # State（str Enum）の場合は素の状態名文字列へ寄せる。
+            value = getattr(current, "value", None)
+            if isinstance(value, str):
+                current = value
+        except Exception:
+            current = None
+        if current in path:
+            steps = path[path.index(current) + 1 :]
+        else:
+            steps = path
+        for step in steps:
             store.transition(session_id, state_of(step))
 
     return _drive_to
