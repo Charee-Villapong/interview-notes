@@ -1,0 +1,31 @@
+.env*
+!.env.example
+config.local.*
+*.local.*
+secrets/
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+__pycache__/
+.DS_Store
+
+# 音声・動画ファイルはこのリポジトリに置かない（保存ガードと併せて二重に防ぐ）
+*.m4a
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.aac
+*.flac
+*.ogg
+*.opus
+*.aiff
+*.caf
+*.mp4
+*.webm
+
+# 実行時データ（状態・音声・ステージング）はリポジトリ外のデータ領域に置く
+data/
+*.sqlite3
+.pytest_cache/
