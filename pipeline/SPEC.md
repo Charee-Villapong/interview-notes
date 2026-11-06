@@ -79,6 +79,19 @@
 
 `python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`run`、`status`、`mark-final`（照合完了→確定版保存済み化）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、保存先は `INTERVIEW_NOTES_DIR`。
 
+## 決定事項（テスト係からの申し送りへの PM 回答。2026-11-07）
+
+1. `closed` は終端状態とし、外向きの遷移を持たない（`closed → needs_reprocess` は不可）。
+2. `needs_reprocess` からの復帰は `resume_state` への遷移のみとし、`TRANSITIONS` では `needs_reprocess → {transfer_pending, received, awaiting_editing}` を許可する。実際の再開先はレコードの `resume_state` に従う。
+3. `verify_and_promote` の `staging_dir`／`inbox_dir` はセッション単位のディレクトリ。`execute_vm_deletion` の `inbox_dir` はルート（配下のセッションフォルダを削除する）。
+4. マニフェストの配置は `staging/<session_id>/manifest.json` とする（手順書にも明記）。
+5. `transferring` のセッションは、1回のランで検証→処理まで進めてよい（テストは両対応）。
+6. イベントログのキーは `date`／`session_id`／`state`／`error_kind` の4つに固定する。
+7. 例外型は専用モジュール `errors.py` に集約する（`InvalidTransitionError`、`AudioContentError`、`DeletionGuardError`、`RepositoryNotPrivateError`、`DraftMarkingError`、`EngineNotConfiguredError`）。
+8. `register` の初期状態は `recorded`。
+9. `processing_completed` は `awaiting_editing` への遷移時に立てる。
+10. `SessionStore` はインスタンス化時に既存ファイルがあれば自動で読み込む。
+
 ## テストの置き場
 
 `pipeline/tests/` に pytest で置く。Mac や外部接続が要る部分はモック／一時ディレクトリで切り分ける。
