@@ -18,6 +18,7 @@ from interview_pipeline.errors import (
 )
 from interview_pipeline.guards import assert_no_audio_files
 from interview_pipeline.states import ERROR_KIND_AUDIO_CONTENT_DETECTED, State
+from interview_pipeline.store import update_needs_reprocess_info
 
 __all__ = [
     "AudioContentError",
@@ -57,8 +58,11 @@ def save_draft(
             # 既に needs_reprocess 等で遷移できない場合は情報を直接更新する。
             current = store.get(session_id)
             if getattr(current, "state", None) is State.NEEDS_REPROCESS:
-                current.error_kind = ERROR_KIND_AUDIO_CONTENT_DETECTED
-                current.resume_state = State.AWAITING_EDITING
+                update_needs_reprocess_info(
+                    current,
+                    error_kind=ERROR_KIND_AUDIO_CONTENT_DETECTED,
+                    resume_state=State.AWAITING_EDITING,
+                )
                 store.save()
         raise
 

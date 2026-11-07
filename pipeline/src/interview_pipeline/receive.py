@@ -14,6 +14,7 @@ from pathlib import Path
 
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.states import ERROR_KIND_TRANSFER_VERIFICATION_FAILED, State
+from interview_pipeline.store import update_needs_reprocess_info
 
 __all__ = ["ReceiveResult", "verify_and_promote"]
 
@@ -55,8 +56,11 @@ def _sha256_of(path: Path) -> str:
 def _fail(store, session, reason: str) -> ReceiveResult:
     if _state_of(session) is State.NEEDS_REPROCESS:
         # 既に needs_reprocess の場合は状態を保ったまま失敗情報を更新する。
-        session.error_kind = ERROR_KIND_TRANSFER_VERIFICATION_FAILED
-        session.resume_state = State.TRANSFER_PENDING
+        update_needs_reprocess_info(
+            session,
+            error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
+            resume_state=State.TRANSFER_PENDING,
+        )
         store.save()
     else:
         store.transition(

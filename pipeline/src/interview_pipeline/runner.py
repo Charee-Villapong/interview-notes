@@ -84,19 +84,14 @@ def _mark_failed(
     resume_state: State,
     event_log: EventLog,
 ) -> None:
-    session = store.get(session_id)
-    current = session.state
-    if isinstance(current, State) and current is State.NEEDS_REPROCESS:
-        session.error_kind = error_kind
-        session.resume_state = resume_state
-        store.save()
-    else:
-        store.transition(
-            session_id,
-            State.NEEDS_REPROCESS,
-            error_kind=error_kind,
-            resume_state=resume_state,
-        )
+    # 既に needs_reprocess の場合は、store.transition 側が状態を変えずに
+    # 失敗情報だけを更新する（update_needs_reprocess_info に一本化）。
+    store.transition(
+        session_id,
+        State.NEEDS_REPROCESS,
+        error_kind=error_kind,
+        resume_state=resume_state,
+    )
     event_log.record(session_id, State.NEEDS_REPROCESS, error_kind=error_kind)
 
 

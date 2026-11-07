@@ -17,7 +17,12 @@ from pathlib import Path
 from interview_pipeline.errors import InvalidTransitionError
 from interview_pipeline.states import State, assert_transition
 
-__all__ = ["InvalidTransitionError", "Session", "SessionStore"]
+__all__ = [
+    "InvalidTransitionError",
+    "Session",
+    "SessionStore",
+    "update_needs_reprocess_info",
+]
 
 
 def _now() -> datetime:
@@ -91,6 +96,30 @@ class Session:
         )
 
 
+def update_needs_reprocess_info(
+    session: Session,
+    *,
+    error_kind: str | None = None,
+    resume_state: State | str | None = None,
+) -> None:
+    """既に ``needs_reprocess`` のセッションの失敗情報を直接更新する。
+
+    状態そのものは変えず、渡された項目だけを書き換える（未指定の
+    項目は保持する）。保存は呼び出し側が行う。「既に needs_reprocess
+    なら遷移せず直接更新する」場合の更新規則はここに一本化し、
+    ``SessionStore.transition`` の自己遷移回避と、receive / saving の
+    フォールバックはすべてこの関数を通す（runner は transition 経由）。
+    """
+    if error_kind is not None:
+        session.error_kind = error_kind
+    if resume_state is not None:
+        session.resume_state = (
+            resume_state
+            if isinstance(resume_state, State)
+            else State(str(resume_state))
+        )
+
+
 @dataclass
 class SessionStore:
     path: Path
@@ -144,28 +173,18 @@ class SessionStore:
             session.state is State.NEEDS_REPROCESS
             and dst_state is State.NEEDS_REPROCESS
         ):
-            if error_kind is not None:
-                session.error_kind = error_kind
-            if resume_state is not None:
-                session.resume_state = (
-                    resume_state
-                    if isinstance(resume_state, State)
-                    else State(str(resume_state))
-                )
+            update_needs_reprocess_info(
+                session, error_kind=error_kind, resume_state=resume_state
+            )
             self.save()
             return session
 
         assert_transition(session.state, dst_state)
 
         if dst_state is State.NEEDS_REPROCESS:
-            if error_kind is not None:
-                session.error_kind = error_kind
-            if resume_state is not None:
-                session.resume_state = (
-                    resume_state
-                    if isinstance(resume_state, State)
-                    else State(str(resume_state))
-                )
+            update_needs_reprocess_info(
+                session, error_kind=error_kind, resume_state=resume_state
+            )
         elif session.state is State.NEEDS_REPROCESS:
             # 復帰時は失敗情報をクリアする。
             session.error_kind = None
