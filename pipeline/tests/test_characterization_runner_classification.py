@@ -1,4 +1,5 @@
-"""特性テスト（現状固定）: C-057 runner の音声トラック分類、C-050 イベントログ同形性。
+"""特性テスト: C-057 runner の音声トラック分類（C-136 で接頭辞一致へ適合）、
+C-050 イベントログ同形性。
 
 根拠: refactoring-candidates-2026-11-07.md の interview-notes 候補7
 （音声トラック分類と話者ラベル。SPEC・マニフェストの定義は「接頭辞」
@@ -8,9 +9,14 @@
 固定するテストがない）、候補3（文字列状態での現挙動が薄い）。
 
 文書との関係: docs/状態管理.md「話者マッピング」は系統をファイル名で
-区別するとし、SPEC は分類を「接頭辞」と書くが、現行 runner の分類は
-ファイル名への部分一致（"system" / "mic" を含むか）である。本ファイルは
-現行の部分一致挙動を固定する（文書側の是非はリファクタとは混ぜない）。
+区別するとし、SPEC は分類を「接頭辞」と書く。当初の runner の分類は
+ファイル名への部分一致（"system" / "mic" を含むか）であり、C-058 では
+その部分一致挙動を固定していた。本人の決定により C-136 で実装を正本に
+合わせる（分類を部分一致から接頭辞一致にする）ことになったため、
+本ファイルの分類に関するテストは適合後の挙動（接頭辞一致）を固定する。
+分類外ファイル（接頭辞が system でも mic でもないファイル）の扱いは
+SPEC・正本に定義がなく、C-058 で固定した現行の扱い（文字起こしして
+system 側＝話者Bとして時系列合成に含める）を今回もそのまま維持する。
 
 既存テストで固定済みの範囲（本ファイルでは重複させない）:
 test_runner.py が system/mic の通常2ファイルの合成・失敗隔離・再試行を、
@@ -19,8 +25,12 @@ test_characterization_error_kind.py が各失敗経路の error_kind 値を固�
 本ファイルが固定するのは:
 - 分類外ファイル（system/mic を含まない名前）のセグメントの行き先
   （話者B＝system 側に寄せられる）と、混在時の並び
-- 部分一致による分類（接頭辞でない位置に system/mic を含む名前）
-- 両方の文字列を含むファイルが二重に文字起こしされ両話者で現れること
+- 接頭辞一致による分類（接頭辞でない位置に system/mic を含む名前は
+  どちらの系統にも分類されず、分類外として話者B側に現れること）
+- system/mic の両方を含む名前でも、接頭辞の系統にだけ分類され、
+  文字起こしは1回だけで一方の話者としてのみ現れること
+- 日付等で始まる名前（接頭辞でない位置に system/mic を含む名前）が
+  分類外として話者B側に現れること
 - サブディレクトリ内のファイルも処理対象になること
 - 音声ファイルが1件も無い received が「成功」し空の transcript を作ること
 - transferring 失敗と needs_reprocess 再開失敗のイベントログの同形性、
@@ -74,7 +84,7 @@ def _transcript(work_root: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# トラック分類（部分一致と分類外）
+# トラック分類（接頭辞一致と分類外。C-136 で正本へ適合）
 # ---------------------------------------------------------------------------
 
 
@@ -111,31 +121,95 @@ def test_unclassified_file_mixed_with_classified_files(
     )
 
 
-def test_classification_is_substring_not_prefix(
+def test_classification_is_prefix_not_substring(
     make_store, drive_to, make_transcriber, make_event_log, filekit, t0, tmp_path
 ):
-    """現行挙動: 接頭辞でなく名前に含むだけでも system/mic に分類される。"""
+    """接頭辞でない位置に system/mic を含む名前は分類外になり話者Bになる。
+
+    SPEC の分類は接頭辞によるため、asystemb.m4a / xmicx.m4a はどちらの
+    系統にも入らない。分類外の現行維持の扱い（話者B側に寄せる）により
+    両方とも B として現れる。ダミーテキストは FakeTranscriber が
+    ファイル名の部分一致で決める（system を含めば SYSTEM-DUMMY-TEXT
+    （開始 0.0）、含まなければ mic で MIC-DUMMY-TEXT（開始 0.5））ため、
+    時系列順に B: SYSTEM → B: MIC の並びになる。話者ラベルは runner の
+    分類で決まり、フェイクのテキスト規則とは独立である。
+    """
     store = _received_store(make_store, drive_to, t0)
     roots = _roots(tmp_path)
     filekit.write(roots[1] / SID / "asystemb.m4a", b"dummy")
     filekit.write(roots[1] / SID / "xmicx.m4a", b"dummy")
 
-    _run(store, roots, make_transcriber(), make_event_log(tmp_path / "e.jsonl"))
+    transcriber = make_transcriber()
+    _run(store, roots, transcriber, make_event_log(tmp_path / "e.jsonl"))
 
-    assert _transcript(roots[2]) == "B: SYSTEM-DUMMY-TEXT\nA: MIC-DUMMY-TEXT\n"
+    assert len(transcriber.calls) == 2
+    assert _transcript(roots[2]) == "B: SYSTEM-DUMMY-TEXT\nB: MIC-DUMMY-TEXT\n"
 
 
-def test_file_matching_both_substrings_is_transcribed_twice(
+def test_system_mic_filename_is_transcribed_once_as_speaker_b(
     make_store, drive_to, make_transcriber, make_event_log, filekit, t0, tmp_path
 ):
-    """system と mic の両方を含む名前は両系統に入り、二重に現れる。"""
+    """system_mic.m4a は接頭辞 system で system 系統にだけ分類される。
+
+    名前に mic も含むが接頭辞一致では mic 系統には入らないため、
+    文字起こしは1回だけで、話者Bとしてのみ現れる。
+    """
     store = _received_store(make_store, drive_to, t0)
     roots = _roots(tmp_path)
     filekit.write(roots[1] / SID / "system_mic.m4a", b"dummy")
 
-    _run(store, roots, make_transcriber(), make_event_log(tmp_path / "e.jsonl"))
+    transcriber = make_transcriber()
+    _run(store, roots, transcriber, make_event_log(tmp_path / "e.jsonl"))
 
-    assert _transcript(roots[2]) == "B: SYSTEM-DUMMY-TEXT\nA: SYSTEM-DUMMY-TEXT\n"
+    assert len(transcriber.calls) == 1
+    assert _transcript(roots[2]) == "B: SYSTEM-DUMMY-TEXT\n"
+
+
+def test_mic_system_filename_is_transcribed_once_as_speaker_a(
+    make_store, drive_to, make_transcriber, make_event_log, filekit, t0, tmp_path
+):
+    """mic_system.m4a は接頭辞 mic で mic 系統にだけ分類される。
+
+    名前に system も含むが接頭辞一致では system 系統には入らないため、
+    文字起こしは1回だけで、話者Aとしてのみ現れる。ダミーテキストは
+    FakeTranscriber が system の部分一致を優先して SYSTEM-DUMMY-TEXT を
+    返すため、テキストは SYSTEM-DUMMY-TEXT のままラベルだけが A になる
+    （テキスト規則と話者ラベルは独立）。
+    """
+    store = _received_store(make_store, drive_to, t0)
+    roots = _roots(tmp_path)
+    filekit.write(roots[1] / SID / "mic_system.m4a", b"dummy")
+
+    transcriber = make_transcriber()
+    _run(store, roots, transcriber, make_event_log(tmp_path / "e.jsonl"))
+
+    assert len(transcriber.calls) == 1
+    assert _transcript(roots[2]) == "A: SYSTEM-DUMMY-TEXT\n"
+
+
+def test_non_prefix_names_with_date_or_take_are_unclassified(
+    make_store, drive_to, make_transcriber, make_event_log, filekit, t0, tmp_path
+):
+    """日付等で始まる名前は接頭辞でないため分類外になり話者Bになる。
+
+    実害のあった誤分類パターンの固定: 2026-11-09_system.m4a は名前に
+    system を含むが接頭辞ではないため system 系統には入らず、
+    take1_mic.m4a も同様に mic 系統には入らない。分類外の現行維持の
+    扱いで両方とも話者B側に現れる。ダミーテキストと開始時刻は
+    FakeTranscriber の規則（system を含めば SYSTEM-DUMMY-TEXT・0.0、
+    mic のみ含めば MIC-DUMMY-TEXT・0.5）によるため、時系列順は
+    B: SYSTEM → B: MIC になる。
+    """
+    store = _received_store(make_store, drive_to, t0)
+    roots = _roots(tmp_path)
+    filekit.write(roots[1] / SID / "2026-11-09_system.m4a", b"dummy")
+    filekit.write(roots[1] / SID / "take1_mic.m4a", b"dummy")
+
+    transcriber = make_transcriber()
+    _run(store, roots, transcriber, make_event_log(tmp_path / "e.jsonl"))
+
+    assert len(transcriber.calls) == 2
+    assert _transcript(roots[2]) == "B: SYSTEM-DUMMY-TEXT\nB: MIC-DUMMY-TEXT\n"
 
 
 def test_files_in_subdirectories_are_processed(
