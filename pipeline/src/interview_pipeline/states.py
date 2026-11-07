@@ -15,12 +15,24 @@ from enum import Enum
 from interview_pipeline.errors import InvalidTransitionError
 
 __all__ = [
+    "ERROR_KIND_AUDIO_CONTENT_DETECTED",
+    "ERROR_KIND_PROCESSING_FAILED",
+    "ERROR_KIND_STT_NOT_CONFIGURED",
+    "ERROR_KIND_TRANSFER_VERIFICATION_FAILED",
     "InvalidTransitionError",
     "State",
     "TRANSITIONS",
     "assert_transition",
     "can_transition",
 ]
+
+# error_kind の契約値（SPEC の公開インターフェースで固定された文字列）。
+# セッションとイベントログの両方に同じ値が記録されるため、リテラルを
+# 散在させずここに集約する。値そのものは契約なので変更しない。
+ERROR_KIND_TRANSFER_VERIFICATION_FAILED = "transfer_verification_failed"
+ERROR_KIND_STT_NOT_CONFIGURED = "stt_not_configured"
+ERROR_KIND_PROCESSING_FAILED = "processing_failed"
+ERROR_KIND_AUDIO_CONTENT_DETECTED = "audio_content_detected"
 
 
 class State(str, Enum):

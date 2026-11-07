@@ -17,7 +17,7 @@ from interview_pipeline.errors import (
     RepositoryNotPrivateError,
 )
 from interview_pipeline.guards import assert_no_audio_files
-from interview_pipeline.states import State
+from interview_pipeline.states import ERROR_KIND_AUDIO_CONTENT_DETECTED, State
 
 __all__ = [
     "AudioContentError",
@@ -50,14 +50,14 @@ def save_draft(
             store.transition(
                 session_id,
                 State.NEEDS_REPROCESS,
-                error_kind="audio_content_detected",
+                error_kind=ERROR_KIND_AUDIO_CONTENT_DETECTED,
                 resume_state=State.AWAITING_EDITING,
             )
         except Exception:
             # 既に needs_reprocess 等で遷移できない場合は情報を直接更新する。
             current = store.get(session_id)
             if getattr(current, "state", None) is State.NEEDS_REPROCESS:
-                current.error_kind = "audio_content_detected"
+                current.error_kind = ERROR_KIND_AUDIO_CONTENT_DETECTED
                 current.resume_state = State.AWAITING_EDITING
                 store.save()
         raise

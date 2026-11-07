@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from interview_pipeline.errors import EngineNotConfiguredError
+from interview_pipeline.states import ERROR_KIND_STT_NOT_CONFIGURED
 
 __all__ = [
     "EngineNotConfiguredError",
@@ -38,7 +39,7 @@ class UnavailableTranscriber:
     """STT 未接続を表す実装。常に ``EngineNotConfiguredError`` を送出する。"""
 
     def transcribe(self, audio_path: Path | str) -> list[Segment]:
-        raise EngineNotConfiguredError("stt_not_configured")
+        raise EngineNotConfiguredError(ERROR_KIND_STT_NOT_CONFIGURED)
 
 
 def merge_tracks(

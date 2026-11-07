@@ -16,7 +16,12 @@ from pathlib import Path
 from interview_pipeline.errors import EngineNotConfiguredError
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.receive import verify_and_promote
-from interview_pipeline.states import State
+from interview_pipeline.states import (
+    ERROR_KIND_PROCESSING_FAILED,
+    ERROR_KIND_STT_NOT_CONFIGURED,
+    ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
+    State,
+)
 from interview_pipeline.transcribe import merge_tracks
 
 __all__ = ["EventLog", "RunReport", "run_once"]
@@ -65,9 +70,9 @@ class RunReport:
 
 def _classify_error(exc: BaseException) -> str:
     if isinstance(exc, EngineNotConfiguredError):
-        return "stt_not_configured"
+        return ERROR_KIND_STT_NOT_CONFIGURED
     # 例外メッセージ等の内容は記録しない。種別のみを返す。
-    return "processing_failed"
+    return ERROR_KIND_PROCESSING_FAILED
 
 
 def _mark_failed(
@@ -203,7 +208,7 @@ def run_once(
                 _mark_failed(
                     store,
                     session_id,
-                    error_kind="transfer_verification_failed",
+                    error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
                     resume_state=State.TRANSFER_PENDING,
                     event_log=event_log,
                 )
@@ -219,7 +224,7 @@ def run_once(
                 event_log.record(
                     session_id,
                     State.NEEDS_REPROCESS,
-                    error_kind="transfer_verification_failed",
+                    error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
                 )
                 report.failed.append(session_id)
                 continue
@@ -274,7 +279,7 @@ def run_once(
                     _mark_failed(
                         store,
                         session_id,
-                        error_kind="transfer_verification_failed",
+                        error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
                         resume_state=State.TRANSFER_PENDING,
                         event_log=event_log,
                     )
@@ -290,7 +295,7 @@ def run_once(
                     event_log.record(
                         session_id,
                         State.NEEDS_REPROCESS,
-                        error_kind="transfer_verification_failed",
+                        error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
                     )
                     report.failed.append(session_id)
                     continue
