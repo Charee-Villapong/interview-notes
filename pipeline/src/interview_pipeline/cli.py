@@ -17,6 +17,16 @@ from interview_pipeline.guards import (
     execute_vm_deletion,
     mac_deletion_eligible,
 )
+from interview_pipeline.layout import (
+    EVENTS_FILENAME,
+    INBOX_DIRNAME,
+    LOG_DIRNAME,
+    MANIFEST_FILENAME,
+    SESSIONS_FILENAME,
+    STAGING_DIRNAME,
+    STATE_DIRNAME,
+    WORK_DIRNAME,
+)
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.receive import verify_and_promote
 from interview_pipeline.runner import EventLog, run_once
@@ -40,7 +50,7 @@ def _notes_dir() -> Path:
 
 
 def _store(data_dir: Path) -> SessionStore:
-    return SessionStore(data_dir / "state" / "sessions.json")
+    return SessionStore(data_dir / STATE_DIRNAME / SESSIONS_FILENAME)
 
 
 def _parse_datetime(value: str | None) -> datetime:
@@ -86,10 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "receive":
-        staging_dir = data_dir / "staging" / args.session_id
-        manifest = Manifest.load(staging_dir / "manifest.json")
+        staging_dir = data_dir / STAGING_DIRNAME / args.session_id
+        manifest = Manifest.load(staging_dir / MANIFEST_FILENAME)
         result = verify_and_promote(
-            store, manifest, staging_dir, data_dir / "inbox" / args.session_id
+            store, manifest, staging_dir, data_dir / INBOX_DIRNAME / args.session_id
         )
         print("ok" if result.ok else f"failed: {result.reason}")
         return 0 if result.ok else 1
@@ -97,11 +107,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         report = run_once(
             store,
-            staging_root=data_dir / "staging",
-            inbox_root=data_dir / "inbox",
-            work_root=data_dir / "work",
+            staging_root=data_dir / STAGING_DIRNAME,
+            inbox_root=data_dir / INBOX_DIRNAME,
+            work_root=data_dir / WORK_DIRNAME,
             transcriber=UnavailableTranscriber(),
-            event_log=EventLog(data_dir / "log" / "events.jsonl"),
+            event_log=EventLog(data_dir / LOG_DIRNAME / EVENTS_FILENAME),
         )
         print(
             f"processed={report.processed} failed={report.failed} "
@@ -120,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "delete-vm-copy":
-        deleted = execute_vm_deletion(store, args.session_id, data_dir / "inbox")
+        deleted = execute_vm_deletion(store, args.session_id, data_dir / INBOX_DIRNAME)
         print(f"deleted {deleted}")
         return 0
 

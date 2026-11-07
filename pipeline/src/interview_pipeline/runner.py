@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from interview_pipeline.errors import EngineNotConfiguredError
+from interview_pipeline.layout import MANIFEST_FILENAME, TRANSCRIPT_FILENAME
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.receive import verify_and_promote
 from interview_pipeline.states import (
@@ -145,7 +146,7 @@ def _process_received(
 
         work_dir = work_root / session_id
         work_dir.mkdir(parents=True, exist_ok=True)
-        transcript_path = work_dir / "transcript.md"
+        transcript_path = work_dir / TRANSCRIPT_FILENAME
         lines = [f"{label}: {segment.text}" for label, segment in merged]
         transcript_path.write_text(
             "\n".join(lines) + ("\n" if lines else ""),
@@ -198,7 +199,7 @@ def run_once(
                 continue
 
         if state is State.TRANSFERRING:
-            manifest_path = staging_root / session_id / "manifest.json"
+            manifest_path = staging_root / session_id / MANIFEST_FILENAME
             if not manifest_path.is_file():
                 report.skipped.append(session_id)
                 continue
@@ -269,7 +270,7 @@ def run_once(
                     report=report,
                 )
             elif resume is State.TRANSFER_PENDING:
-                manifest_path = staging_root / session_id / "manifest.json"
+                manifest_path = staging_root / session_id / MANIFEST_FILENAME
                 if not manifest_path.is_file():
                     report.skipped.append(session_id)
                     continue
