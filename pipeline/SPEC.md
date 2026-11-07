@@ -65,6 +65,7 @@
 - `run_once(store, *, staging_root, inbox_root, work_root, transcriber, event_log) -> RunReport`
   - 全件走査し、`transferring`（検証待ち：マニフェストがあれば検証）、`received`（処理）、`needs_reprocess`（resume 先に応じて再開）を処理する
   - 処理の順序は、正本 `../docs/状態管理.md`「処理順序」のとおり（作業用テキストは `work/<session_id>/transcript.md` に生成する）
+  - セッションの inbox 内に、接頭辞 `system`／`mic` のどちらでも始まらないファイル（分類外ファイル）が1件でも存在する場合は、文字起こしを一切行わずエラーで停止し、セッションを `needs_reprocess`（resume: `received`、error_kind=`"unclassified_track_file"`）にしてイベントを記録する。分類外ファイルを話者として合成することはしない
   - 失敗時はセッションを `needs_reprocess` にし、イベントを記録する。他件の処理は止めない
   - 再試行の扱いは正本 `../docs/状態管理.md` を参照（回数上限なし・`needs_reprocess` は毎ランの対象）
 - `RunReport` — `processed: list[str]`、`failed: list[str]`、`skipped: list[str]`
