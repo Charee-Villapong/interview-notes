@@ -19,6 +19,7 @@ __all__ = [
     "ERROR_KIND_PROCESSING_FAILED",
     "ERROR_KIND_STT_NOT_CONFIGURED",
     "ERROR_KIND_TRANSFER_VERIFICATION_FAILED",
+    "ERROR_KIND_UNCLASSIFIED_TRACK_FILE",
     "InvalidTransitionError",
     "State",
     "TRANSITIONS",
@@ -35,6 +36,7 @@ ERROR_KIND_TRANSFER_VERIFICATION_FAILED = "transfer_verification_failed"
 ERROR_KIND_STT_NOT_CONFIGURED = "stt_not_configured"
 ERROR_KIND_PROCESSING_FAILED = "processing_failed"
 ERROR_KIND_AUDIO_CONTENT_DETECTED = "audio_content_detected"
+ERROR_KIND_UNCLASSIFIED_TRACK_FILE = "unclassified_track_file"
 
 
 class State(str, Enum):

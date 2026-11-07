@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from interview_pipeline.errors import EngineNotConfiguredError
+from interview_pipeline.errors import EngineNotConfiguredError, UnclassifiedTrackError
 from interview_pipeline.layout import MANIFEST_FILENAME, TRANSCRIPT_FILENAME
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.receive import verify_and_promote
@@ -21,6 +21,7 @@ from interview_pipeline.states import (
     ERROR_KIND_PROCESSING_FAILED,
     ERROR_KIND_STT_NOT_CONFIGURED,
     ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
+    ERROR_KIND_UNCLASSIFIED_TRACK_FILE,
     State,
 )
 from interview_pipeline.states import state_name as _state_name
@@ -62,6 +63,8 @@ class RunReport:
 def _classify_error(exc: BaseException) -> str:
     if isinstance(exc, EngineNotConfiguredError):
         return ERROR_KIND_STT_NOT_CONFIGURED
+    if isinstance(exc, UnclassifiedTrackError):
+        return ERROR_KIND_UNCLASSIFIED_TRACK_FILE
     # 例外メッセージ等の内容は記録しない。種別のみを返す。
     return ERROR_KIND_PROCESSING_FAILED
 
@@ -106,9 +109,14 @@ def _process_received(
         # 系統の区別はファイル名の接頭辞による（SPEC／正本）。
         system_files = [p for p in files if p.name.startswith("system")]
         mic_files = [p for p in files if p.name.startswith("mic")]
-        # 接頭辞で分類できないファイルも処理対象に含める（分類外）。
+        # 接頭辞で分類できないファイル（分類外）が1件でもあれば、
+        # 文字起こしを一切行わずエラーで停止する（C-142）。
         classified = set(system_files) | set(mic_files)
         other_files = [p for p in files if p not in classified]
+        if other_files:
+            raise UnclassifiedTrackError(
+                "unclassified track file(s): " + ", ".join(p.name for p in other_files)
+            )
 
         system_segments = []
         for path in system_files:
@@ -116,12 +124,6 @@ def _process_received(
         mic_segments = []
         for path in mic_files:
             mic_segments.extend(transcriber.transcribe(path))
-        other_segments = []
-        for path in other_files:
-            other_segments.extend(transcriber.transcribe(path))
-        # 分類外のセグメントは system 側（話者B）に含め、時系列合成の対象にする。
-        if other_segments:
-            system_segments.extend(other_segments)
 
         merged = merge_tracks(system_segments, mic_segments)
 

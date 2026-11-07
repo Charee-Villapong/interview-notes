@@ -29,3 +29,7 @@ class DraftMarkingError(Exception):
 
 class EngineNotConfiguredError(Exception):
     """STT エンジンが未接続・未設定である。"""
+
+
+class UnclassifiedTrackError(Exception):
+    """接頭辞で系統を分類できないファイルがセッション内に存在する。"""
