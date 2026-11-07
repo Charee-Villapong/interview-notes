@@ -5,19 +5,17 @@
 既存テストはフォルダ削除のみ）、pipeline/SPEC.md の guards.py
 契約、docs/状態管理.md「削除の条件」。
 
-（仕様ズレの固定・C-124 / decision_pending）
+（C-124: 本人の決定により実装を正本へ適合させた）
 文書の正本では VM側コピーの削除条件は「処理完了かつ
 draft_saved 以降の状態で draft_saved_at が記録されている」
-の二重条件だが、現行実装 guards.vm_copy_deletable は状態を
-一切見ず、processing_completed と draft_saved_at の
-有無だけで判定する。本ファイルの該当テストは、この差を
-「文書の正本とは異なる現行挙動」として明示したうえで固定する
-（実装は直さない。判断は C-124 側の分離済み案件）。
+の二重条件である。本人の決定により実装を正本へ適合させた
+（C-124）ため、本ファイルの該当テストは適合後の挙動
+（draft_saved 以降の状態でなければ削除不可）を固定する。
 
 本ファイルが固定するのは:
 - execute_vm_deletion のファイル単体削除・対象不在時の成功・
   戻り値（削除対象パス）
-- 上記の仕様ズレ（状態を無視する現行判定と、それに基づく実削除）
+- 適合後の VM 削除条件（recorded では削除不可・削除拒否）
 - duck-typing セッション（文字列状態・属性欠落モック）での
   mac_deletion_eligible / vm_copy_deletable の現行挙動
 - find_audio_files の文字列パス入力・拡張子なし・ドットファイル名
@@ -28,13 +26,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 SID = "2026-11-09_01"
 
 
-def _deletable_store(make_store, t0):
-    # 現行実装の2条件（処理完了＋draft_saved_at）を満たすストア。
+def _deletable_store(make_store, drive_to, t0):
+    # 正本の削除条件（処理完了＋draft_saved 以降＋draft_saved_at）を満たす。
     store = make_store()
     store.register(SID, t0)
+    drive_to(store, SID, "awaiting_review")
     session = store.get(SID)
     session.processing_completed = True
     session.draft_saved_at = t0
@@ -48,12 +49,12 @@ def _deletable_store(make_store, t0):
 
 
 def test_execute_vm_deletion_removes_single_file_target(
-    make_store, filekit, t0, tmp_path
+    make_store, drive_to, filekit, t0, tmp_path
 ):
     # 削除対象がフォルダでなく単一ファイルでも削除され、時刻が残る。
     from interview_pipeline.guards import execute_vm_deletion
 
-    store = _deletable_store(make_store, t0)
+    store = _deletable_store(make_store, drive_to, t0)
     inbox_root = tmp_path / "inbox"
     inbox_root.mkdir()
     target = inbox_root / SID
@@ -66,11 +67,13 @@ def test_execute_vm_deletion_removes_single_file_target(
     assert store.get(SID).vm_copy_deleted_at is not None
 
 
-def test_execute_vm_deletion_succeeds_when_target_missing(make_store, t0, tmp_path):
+def test_execute_vm_deletion_succeeds_when_target_missing(
+    make_store, drive_to, t0, tmp_path
+):
     # 対象フォルダが存在しなくても成功し、削除時刻だけが記録される。
     from interview_pipeline.guards import execute_vm_deletion
 
-    store = _deletable_store(make_store, t0)
+    store = _deletable_store(make_store, drive_to, t0)
     inbox_root = tmp_path / "inbox"  # 作らない
 
     returned = execute_vm_deletion(store, SID, inbox_root)
@@ -95,40 +98,48 @@ def test_execute_vm_deletion_returns_session_path(make_store, drive_to, t0, tmp_
 
 
 # ---------------------------------------------------------------------------
-# 仕様ズレの固定: vm_copy_deletable は状態を見ない（C-124）
+# VM削除の状態条件（C-124適合後）: draft_saved 未満では削除不可
 # ---------------------------------------------------------------------------
 
 
-def test_current_behavior_vm_deletable_ignores_state_diverging_from_doc(make_store, t0):
-    # （文書の正本とは異なる現行挙動）状態が recorded でも True になる。
-    # docs/状態管理.md の正本は「draft_saved 以降の状態」も条件に含むが、
-    # 現行実装は processing_completed と draft_saved_at だけで判定する
-    # ため、recorded のまま2条件を直接満たすと True を返す。この差は
-    # C-124 として分離済みであり、ここでは現行挙動を固定するに留める。
+def test_vm_deletable_false_in_recorded_state_after_c124_alignment(make_store, t0):
+    # 適合後の正本どおりの挙動: 状態が recorded では False になる。
+    # docs/状態管理.md の正本は「draft_saved 以降の状態」も条件に含む
+    # ため、recorded のままフラグ2条件を直接満たしても False を返す。
     from interview_pipeline.guards import vm_copy_deletable
 
-    store = _deletable_store(make_store, t0)
+    store = make_store()
+    store.register(SID, t0)
     session = store.get(SID)
+    session.processing_completed = True
+    session.draft_saved_at = t0
+    store.save()
     assert session.state.value == "recorded"  # draft_saved 以降ではない
-    assert vm_copy_deletable(session) is True
+    assert vm_copy_deletable(session) is False
 
 
-def test_current_behavior_execute_vm_deletion_ignores_state_diverging_from_doc(
-    make_store, filekit, t0, tmp_path
+def test_execute_vm_deletion_refused_in_recorded_state_after_c124_alignment(
+    make_store, exc, filekit, t0, tmp_path
 ):
-    # （文書の正本とは異なる現行挙動）recorded 状態でも実削除が実行される。
-    # vm_copy_deletable の現行判定（状態無視）の帰結として、
-    # execute_vm_deletion も状態を確認せずに削除する。
+    # 適合後の正本どおりの挙動: recorded 状態では実削除が拒否される。
+    # vm_copy_deletable の状態条件の帰結として、execute_vm_deletion も
+    # DeletionGuardError で拒否し、ファイルは消えず削除時刻も残らない。
     from interview_pipeline.guards import execute_vm_deletion
 
-    store = _deletable_store(make_store, t0)
+    store = make_store()
+    store.register(SID, t0)
+    session = store.get(SID)
+    session.processing_completed = True
+    session.draft_saved_at = t0
+    store.save()
     inbox_root = tmp_path / "inbox"
     target_file = filekit.write(inbox_root / SID / "system_track.m4a", b"dummy")
 
-    execute_vm_deletion(store, SID, inbox_root)
+    with pytest.raises(exc("DeletionGuardError")):
+        execute_vm_deletion(store, SID, inbox_root)
 
-    assert not target_file.exists()
-    assert store.get(SID).vm_copy_deleted_at is not None
+    assert target_file.exists()
+    assert store.get(SID).vm_copy_deleted_at is None
 
 
 # ---------------------------------------------------------------------------
