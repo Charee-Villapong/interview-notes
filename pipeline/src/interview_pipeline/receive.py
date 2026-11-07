@@ -49,10 +49,15 @@ def _state_of(session) -> State:
     return State(str(getattr(state, "value", state)))
 
 
+# ハッシュ計算でファイルを読み進める単位（バイト数）。性能だけに効く
+# 調整値で、検証結果には影響しない。現行値をそのまま名前付ける。
+_SHA256_CHUNK_SIZE = 1024 * 1024
+
+
 def _sha256_of(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        for chunk in iter(lambda: handle.read(_SHA256_CHUNK_SIZE), b""):
             digest.update(chunk)
     return digest.hexdigest()
 

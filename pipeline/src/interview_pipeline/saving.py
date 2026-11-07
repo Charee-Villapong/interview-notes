@@ -29,6 +29,24 @@ __all__ = [
 
 DRAFT_MARKING = "下書き（未照合）"
 
+# セッションIDの区切り文字。ID は ``<面談日付>_<連番>`` 形式
+# （例: ``2026-11-09_01``、正本 docs/状態管理.md「セッション識別子」）で、
+# 日付部分はこの区切りの先頭要素になる。
+_SESSION_ID_SEPARATOR = "_"
+
+
+def _session_date_part(session, session_id: str) -> str:
+    """保存先フォルダの日付部分を決める。
+
+    通常は ``created_at`` の日付を使う。``created_at`` が無い場合に限り、
+    セッションIDが ``<面談日付>_<連番>`` 形式である前提で、その日付
+    部分にフォールバックする（ID 形式が変わるとこの前提も見直すこと）。
+    """
+    created_at = getattr(session, "created_at", None)
+    if created_at is not None and hasattr(created_at, "date"):
+        return created_at.date().isoformat()
+    return session_id.split(_SESSION_ID_SEPARATOR)[0]
+
 
 def save_draft(
     store,
@@ -78,11 +96,7 @@ def save_draft(
         raise DraftMarkingError("draft must start with the draft marking")
 
     # 4. 配置先を決めて配置する: notes_dir/<日付>/<session_id>.md
-    created_at = getattr(session, "created_at", None)
-    if created_at is not None and hasattr(created_at, "date"):
-        date_part = created_at.date().isoformat()
-    else:
-        date_part = session_id.split("_")[0]
+    date_part = _session_date_part(session, session_id)
     destination_dir = notes / date_part
     destination_dir.mkdir(parents=True, exist_ok=True)
     destination = destination_dir / f"{session_id}.md"

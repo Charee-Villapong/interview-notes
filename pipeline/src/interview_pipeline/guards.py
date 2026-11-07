@@ -17,6 +17,7 @@ from interview_pipeline.states import State, state_name
 __all__ = [
     "AUDIO_VIDEO_EXTENSIONS",
     "AudioContentError",
+    "DEFAULT_OVERDUE_DAYS",
     "DeletionGuardError",
     "assert_no_audio_files",
     "execute_vm_deletion",
@@ -25,6 +26,10 @@ __all__ = [
     "mac_deletion_eligible",
     "vm_copy_deletable",
 ]
+
+# 期限超過の未処理を検出する既定日数。正本 docs/状態管理.md の
+# 「録音から7日を超え」が由来。削除の許可条件ではなく可視化用。
+DEFAULT_OVERDUE_DAYS = 7
 
 AUDIO_VIDEO_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -115,7 +120,9 @@ def mac_deletion_eligible(session) -> bool:
     return True
 
 
-def find_overdue_unprocessed(store, now: datetime, days: int = 7) -> list:
+def find_overdue_unprocessed(
+    store, now: datetime, days: int = DEFAULT_OVERDUE_DAYS
+) -> list:
     """録音から ``days`` を超え ``final_saved`` 未到達のセッションを返す。
 
     削除用ではなく、可視化・再処理の拾い直し専用。状態は変更しない。
