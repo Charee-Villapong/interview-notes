@@ -267,9 +267,7 @@ def test_cli_receive_promotes_staging_manifest_to_inbox(tmp_path, filekit):
     assert f"{SID} received" in status.stdout
 
 
-def test_cli_receive_failure_keeps_staging_and_creates_no_inbox(
-    tmp_path, filekit
-):
+def test_cli_receive_failure_keeps_staging_and_creates_no_inbox(tmp_path, filekit):
     """receive 検証失敗時は inbox を作らず、staging の一式が残る。"""
     data_dir, notes_dir = _cli_setup(tmp_path)
     _cli_register_with_staging(data_dir, notes_dir, filekit, bad_sha=True)
