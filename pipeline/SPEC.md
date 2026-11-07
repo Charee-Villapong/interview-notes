@@ -22,7 +22,7 @@
 - `Session` — データクラス。少なくとも次のフィールドを持つ：
   `session_id: str`、`state: State`、`created_at`（録音日時）、`resume_state: State | None`、`error_kind: str | None`、`draft_saved_at`、`final_saved_at`、`vm_copy_deleted_at`、`mac_copy_deleted_at`、`processing_completed: bool`
 - `SessionStore(path)` — JSON ファイルへ永続化する
-  - `register(session_id, created_at) -> Session` — 冪等（既存なら既存を返す）
+  - `register(session_id, created_at) -> Session` — 冪等（既存なら既存を返す。正本 `../docs/状態管理.md`「二重処理・二重保存の防止」参照）
   - `get(session_id) -> Session`
   - `all() -> list[Session]`
   - `transition(session_id, dst, *, error_kind=None, resume_state=None)` — 遷移検証つきで状態を更新し、保存する。`draft_saved` へ進むとき `draft_saved_at` を、`final_saved` へ進むとき `final_saved_at` を自動で記録する
@@ -40,16 +40,17 @@
   - 全ファイルのサイズ・SHA-256 が一致した場合のみ、ファイルを inbox へ移動し、状態を `received` に進め、`ReceiveResult(ok=True)` を返す
   - 1件でも不一致・欠落があれば、ファイルは inbox へ移さず、状態を `needs_reprocess`（resume: `transfer_pending`、`error_kind="transfer_verification_failed"`）にして `ReceiveResult(ok=False, reason=...)` を返す
   - すでに `received` 以降のセッションに対しては冪等に `ok=True`（二重処理しない）
+  - 受信検証を通過していないファイルは、処理対象に絶対に含めない（正本 `../docs/状態管理.md`「二重処理・二重保存の防止」）
 
 ### `guards.py`
 
 - `AUDIO_VIDEO_EXTENSIONS: frozenset[str]`
 - `find_audio_files(paths) -> list[Path]` — 音声・動画拡張子（大文字小文字を区別しない）に一致するものを返す
 - `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（保存中止）
-- `vm_copy_deletable(session) -> bool` — 処理完了かつ `draft_saved_at` 記録済みのときだけ True
+- `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ GitHub への下書き保存確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
 - `execute_vm_deletion(store, session_id, inbox_dir) -> Path` — 実行直前に `vm_copy_deletable` を再確認し、満たさなければ `DeletionGuardError`。満たせば inbox のセッションフォルダを削除し、`vm_copy_deleted_at` を記録する
-- `mac_deletion_eligible(session) -> bool` — `final_saved_at` 記録済み、かつ `needs_reprocess` でないときだけ True（経過日数は許可条件にしない）
-- `find_overdue_unprocessed(store, now, days=7) -> list[Session]` — 録音から `days` を超え、`final_saved` 未到達のセッション（削除用ではなく可視化・再処理用）
+- `mac_deletion_eligible(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、確定版が保存済み（`final_saved` 以降）かつ未処理でないこと（`needs_reprocess` でないこと）を満たすときだけ True（期限（最長7日）は削除の許可条件ではない）
+- `find_overdue_unprocessed(store, now, days=7) -> list[Session]` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、録音から `days` を超え、`final_saved` 未到達のセッション（削除用ではなく可視化・再処理用）
 
 ### `transcribe.py`
 
