@@ -214,6 +214,134 @@ def _verify_and_process(
     )
 
 
+def _normalized_state(session, session_id: str, report: RunReport) -> State | None:
+    """セッションの現在状態を ``State`` へ正規化する。
+
+    文字列等の状態は状態名経由で ``State`` 化する。正規化できない場合は
+    そのセッションを ``skipped`` に入れて ``None`` を返す。
+    """
+    state = session.state
+    if not isinstance(state, State):
+        try:
+            state = State(_state_name(state))
+        except ValueError:
+            report.skipped.append(session_id)
+            return None
+    return state
+
+
+def _normalized_resume_state(session) -> State | None:
+    """``needs_reprocess`` の再開先を ``State`` へ正規化する。
+
+    文字列等の再開先は状態名経由で ``State`` 化し、正規化できない場合は
+    ``None``（再開先なし）として扱う。
+    """
+    resume = session.resume_state
+    if not isinstance(resume, State) and resume is not None:
+        try:
+            resume = State(_state_name(resume))
+        except ValueError:
+            resume = None
+    return resume
+
+
+def _resume_needs_reprocess(
+    store,
+    session,
+    *,
+    staging_root: Path,
+    inbox_root: Path,
+    work_root: Path,
+    transcriber,
+    event_log: EventLog,
+    report: RunReport,
+) -> None:
+    """``needs_reprocess`` のセッションを再開先に応じて再処理する。"""
+    session_id = session.session_id
+    resume = _normalized_resume_state(session)
+    if resume is State.RECEIVED:
+        store.transition(session_id, State.RECEIVED)
+        _process_received(
+            store,
+            session_id,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
+    elif resume is State.TRANSFER_PENDING:
+        _verify_and_process(
+            store,
+            session_id,
+            staging_root=staging_root,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
+    else:
+        # awaiting_editing への復帰等は人手・保存ステップの担当。
+        report.skipped.append(session_id)
+
+
+def _dispatch_session(
+    store,
+    session,
+    *,
+    staging_root: Path,
+    inbox_root: Path,
+    work_root: Path,
+    transcriber,
+    event_log: EventLog,
+    report: RunReport,
+) -> None:
+    """1件のセッションを現在状態に応じて処理へ振り分ける。"""
+    session_id = session.session_id
+    state = _normalized_state(session, session_id, report)
+    if state is None:
+        return
+
+    if state is State.TRANSFERRING:
+        _verify_and_process(
+            store,
+            session_id,
+            staging_root=staging_root,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
+
+    elif state is State.RECEIVED:
+        _process_received(
+            store,
+            session_id,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
+
+    elif state is State.NEEDS_REPROCESS:
+        _resume_needs_reprocess(
+            store,
+            session,
+            staging_root=staging_root,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
+
+    else:
+        report.skipped.append(session_id)
+
+
 def run_once(
     store,
     *,
@@ -233,73 +361,17 @@ def run_once(
     sessions = list(store.all())
 
     for snapshot in sessions:
-        session_id = snapshot.session_id
-        session = store.get(session_id)
-        state = session.state
-        if not isinstance(state, State):
-            try:
-                state = State(_state_name(state))
-            except ValueError:
-                report.skipped.append(session_id)
-                continue
-
-        if state is State.TRANSFERRING:
-            _verify_and_process(
-                store,
-                session_id,
-                staging_root=staging_root,
-                inbox_root=inbox_root,
-                work_root=work_root,
-                transcriber=transcriber,
-                event_log=event_log,
-                report=report,
-            )
-
-        elif state is State.RECEIVED:
-            _process_received(
-                store,
-                session_id,
-                inbox_root=inbox_root,
-                work_root=work_root,
-                transcriber=transcriber,
-                event_log=event_log,
-                report=report,
-            )
-
-        elif state is State.NEEDS_REPROCESS:
-            resume = session.resume_state
-            if not isinstance(resume, State) and resume is not None:
-                try:
-                    resume = State(_state_name(resume))
-                except ValueError:
-                    resume = None
-            if resume is State.RECEIVED:
-                store.transition(session_id, State.RECEIVED)
-                _process_received(
-                    store,
-                    session_id,
-                    inbox_root=inbox_root,
-                    work_root=work_root,
-                    transcriber=transcriber,
-                    event_log=event_log,
-                    report=report,
-                )
-            elif resume is State.TRANSFER_PENDING:
-                _verify_and_process(
-                    store,
-                    session_id,
-                    staging_root=staging_root,
-                    inbox_root=inbox_root,
-                    work_root=work_root,
-                    transcriber=transcriber,
-                    event_log=event_log,
-                    report=report,
-                )
-            else:
-                # awaiting_editing への復帰等は人手・保存ステップの担当。
-                report.skipped.append(session_id)
-
-        else:
-            report.skipped.append(session_id)
+        # 1件ずつの状態正規化と振り分けは _dispatch_session が担う。
+        session = store.get(snapshot.session_id)
+        _dispatch_session(
+            store,
+            session,
+            staging_root=staging_root,
+            inbox_root=inbox_root,
+            work_root=work_root,
+            transcriber=transcriber,
+            event_log=event_log,
+            report=report,
+        )
 
     return report
