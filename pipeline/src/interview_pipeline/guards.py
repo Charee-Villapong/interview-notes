@@ -125,15 +125,24 @@ def execute_vm_deletion(store, session_id: str, inbox_dir: Path | str) -> Path:
 
 
 def mac_deletion_eligible(session) -> bool:
-    """``final_saved_at`` 記録済み、かつ ``needs_reprocess`` でないときだけ True。
+    """``final_saved`` 以降の状態で、かつ ``needs_reprocess``
+    でないときだけ True。
 
-    経過日数は許可条件にしない（未処理は日数に関わらず消さない）。
+    正本 docs/状態管理.md「削除の条件」: 確定版が保存済み
+    （``final_saved`` 以降の状態）かつ未処理でないこと
+    （``needs_reprocess`` でないこと）を満たす必要がある。
+    ``final_saved_at`` の記録の有無は条件ではない。期限
+    （最長7日）は削除の許可条件ではない（未処理は日数に
+    関わらず消さない）。
     """
-    if getattr(session, "final_saved_at", None) is None:
+    state = _state_name(session)
+    if state == State.NEEDS_REPROCESS.value:
         return False
-    if _state_name(session) == State.NEEDS_REPROCESS.value:
-        return False
-    return True
+    return state in {
+        State.FINAL_SAVED.value,
+        State.DELETABLE.value,
+        State.CLOSED.value,
+    }
 
 
 def find_overdue_unprocessed(
