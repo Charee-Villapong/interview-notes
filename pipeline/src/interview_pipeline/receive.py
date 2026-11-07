@@ -39,6 +39,10 @@ _ALREADY_RECEIVED_OR_LATER = {
 
 
 def _state_of(session) -> State:
+    # states.coerce_state とは意図的に別系統として残す: こちらは
+    # ``.value`` を持つ duck-typing 的な状態値も ``State`` 化して吸収する
+    # （coerce_state は ``str(state)`` 経由のため受理範囲が異なる）。
+    # 統一すると受信判定の受理範囲が変わるため、現行の判定方法を保つ。
     state = session.state
     if isinstance(state, State):
         return state

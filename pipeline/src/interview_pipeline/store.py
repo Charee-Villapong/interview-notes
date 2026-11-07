@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from interview_pipeline.errors import InvalidTransitionError
-from interview_pipeline.states import State, assert_transition
+from interview_pipeline.states import State, assert_transition, coerce_state
 
 __all__ = [
     "InvalidTransitionError",
@@ -50,7 +50,7 @@ def _state_to_str(value: State | None) -> str | None:
 def _state_from_str(value: str | None) -> State | None:
     if value is None:
         return None
-    return State(value)
+    return coerce_state(value)
 
 
 @dataclass
@@ -113,11 +113,7 @@ def update_needs_reprocess_info(
     if error_kind is not None:
         session.error_kind = error_kind
     if resume_state is not None:
-        session.resume_state = (
-            resume_state
-            if isinstance(resume_state, State)
-            else State(str(resume_state))
-        )
+        session.resume_state = coerce_state(resume_state)
 
 
 @dataclass
@@ -166,7 +162,7 @@ class SessionStore:
     ) -> Session:
         """遷移検証つきで状態を更新し、保存する。"""
         session = self.get(session_id)
-        dst_state = dst if isinstance(dst, State) else State(str(dst))
+        dst_state = coerce_state(dst)
         # needs_reprocess に既にいる状態で再度失敗を記録する場合は、
         # 状態そのものは変えずに error_kind / resume_state だけ更新する。
         if (

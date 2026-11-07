@@ -23,20 +23,10 @@ from interview_pipeline.states import (
     ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
     State,
 )
+from interview_pipeline.states import state_name as _state_name
 from interview_pipeline.transcribe import merge_tracks
 
 __all__ = ["EventLog", "RunReport", "run_once"]
-
-
-def _state_name(state) -> str:
-    if state is None:
-        return ""
-    if isinstance(state, str):
-        return state
-    value = getattr(state, "value", None)
-    if isinstance(value, str):
-        return value
-    return str(getattr(state, "name", state)).lower()
 
 
 class EventLog:

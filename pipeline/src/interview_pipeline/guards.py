@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterable
 
 from interview_pipeline.errors import AudioContentError, DeletionGuardError
-from interview_pipeline.states import State
+from interview_pipeline.states import State, state_name
 
 __all__ = [
     "AUDIO_VIDEO_EXTENSIONS",
@@ -69,15 +69,9 @@ def assert_no_audio_files(paths: Iterable[Path | str]) -> None:
 
 
 def _state_name(session) -> str:
-    state = getattr(session, "state", None)
-    if state is None:
-        return ""
-    if isinstance(state, str):
-        return state
-    value = getattr(state, "value", None)
-    if isinstance(value, str):
-        return value
-    return str(getattr(state, "name", state)).lower()
+    # セッションから状態を取り出す部分だけが runner 側と異なる。
+    # 状態値から名前を得る規則は states.state_name に一本化する。
+    return state_name(getattr(session, "state", None))
 
 
 def vm_copy_deletable(session) -> bool:

@@ -24,6 +24,8 @@ __all__ = [
     "TRANSITIONS",
     "assert_transition",
     "can_transition",
+    "coerce_state",
+    "state_name",
 ]
 
 # error_kind の契約値（SPEC の公開インターフェースで固定された文字列）。
@@ -70,10 +72,41 @@ TRANSITIONS: dict[State, set[State]] = {
 }
 
 
-def _coerce(state: State | str) -> State:
+def coerce_state(state: State | str) -> State:
+    """状態を ``State`` へ寄せる（文字列の状態名を吸収する）。
+
+    ``State`` そのものはそのまま返し、それ以外は ``State(str(state))``
+    で変換する。未知の名前では ``ValueError`` になる。状態の強制変換は
+    この規則に一本化する（ただし ``receive`` のセッション状態の読み取りは、
+    ``.value`` を持つduck-typing的な値を吸収する範囲が異なるため、
+    そちらの判定方法は現行のまま別に置く）。
+    """
     if isinstance(state, State):
         return state
     return State(str(state))
+
+
+def _coerce(state: State | str) -> State:
+    return coerce_state(state)
+
+
+def state_name(state) -> str:
+    """状態値から状態名の文字列を取り出す（寛容な読み取り）。
+
+    ``None`` は空文字列、文字列はそのまま、``.value`` が文字列なら
+    その値、それ以外は ``.name`` 等からの文字列化で返す。duck-typing
+    的なセッション／モックでも落ちない読み取り専用の規則であり、
+    遷移可否などの判定そのものには使わない（判定は ``coerce_state``
+    側の規則で行う）。
+    """
+    if state is None:
+        return ""
+    if isinstance(state, str):
+        return state
+    value = getattr(state, "value", None)
+    if isinstance(value, str):
+        return value
+    return str(getattr(state, "name", state)).lower()
 
 
 def can_transition(src: State | str, dst: State | str) -> bool:
