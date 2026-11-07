@@ -169,6 +169,66 @@ def _process_received(
     report.processed.append(session_id)
 
 
+def _verify_and_process(
+    store,
+    session_id: str,
+    *,
+    staging_root: Path,
+    inbox_root: Path,
+    work_root: Path,
+    transcriber,
+    event_log: EventLog,
+    report: RunReport,
+) -> None:
+    """ステージングの転送検証を行い、成功したら処理まで進める。
+
+    ``transferring`` と ``needs_reprocess``（resume: ``transfer_pending``）
+    の両経路で共有する。マニフェストが無ければ skipped、検証失敗なら
+    失敗を記録して failed に入れる（記録方法は現在状態に応じて
+    ``_mark_failed`` / ``verify_and_promote`` 側が吸収する）。
+    """
+    manifest_path = staging_root / session_id / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        report.skipped.append(session_id)
+        return
+    try:
+        manifest = Manifest.load(manifest_path)
+    except Exception:
+        _mark_failed(
+            store,
+            session_id,
+            error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
+            resume_state=State.TRANSFER_PENDING,
+            event_log=event_log,
+        )
+        report.failed.append(session_id)
+        return
+    result = verify_and_promote(
+        store,
+        manifest,
+        staging_root / session_id,
+        inbox_root / session_id,
+    )
+    if not result.ok:
+        event_log.record(
+            session_id,
+            State.NEEDS_REPROCESS,
+            error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
+        )
+        report.failed.append(session_id)
+        return
+    # 検証成功後は同ランで処理まで進めてよい（決定事項 5）。
+    _process_received(
+        store,
+        session_id,
+        inbox_root=inbox_root,
+        work_root=work_root,
+        transcriber=transcriber,
+        event_log=event_log,
+        report=report,
+    )
+
+
 def run_once(
     store,
     *,
@@ -199,40 +259,10 @@ def run_once(
                 continue
 
         if state is State.TRANSFERRING:
-            manifest_path = staging_root / session_id / MANIFEST_FILENAME
-            if not manifest_path.is_file():
-                report.skipped.append(session_id)
-                continue
-            try:
-                manifest = Manifest.load(manifest_path)
-            except Exception:
-                _mark_failed(
-                    store,
-                    session_id,
-                    error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
-                    resume_state=State.TRANSFER_PENDING,
-                    event_log=event_log,
-                )
-                report.failed.append(session_id)
-                continue
-            result = verify_and_promote(
-                store,
-                manifest,
-                staging_root / session_id,
-                inbox_root / session_id,
-            )
-            if not result.ok:
-                event_log.record(
-                    session_id,
-                    State.NEEDS_REPROCESS,
-                    error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
-                )
-                report.failed.append(session_id)
-                continue
-            # 検証成功後は同ランで処理まで進めてよい（決定事項 5）。
-            _process_received(
+            _verify_and_process(
                 store,
                 session_id,
+                staging_root=staging_root,
                 inbox_root=inbox_root,
                 work_root=work_root,
                 transcriber=transcriber,
@@ -270,39 +300,10 @@ def run_once(
                     report=report,
                 )
             elif resume is State.TRANSFER_PENDING:
-                manifest_path = staging_root / session_id / MANIFEST_FILENAME
-                if not manifest_path.is_file():
-                    report.skipped.append(session_id)
-                    continue
-                try:
-                    manifest = Manifest.load(manifest_path)
-                except Exception:
-                    _mark_failed(
-                        store,
-                        session_id,
-                        error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
-                        resume_state=State.TRANSFER_PENDING,
-                        event_log=event_log,
-                    )
-                    report.failed.append(session_id)
-                    continue
-                result = verify_and_promote(
-                    store,
-                    manifest,
-                    staging_root / session_id,
-                    inbox_root / session_id,
-                )
-                if not result.ok:
-                    event_log.record(
-                        session_id,
-                        State.NEEDS_REPROCESS,
-                        error_kind=ERROR_KIND_TRANSFER_VERIFICATION_FAILED,
-                    )
-                    report.failed.append(session_id)
-                    continue
-                _process_received(
+                _verify_and_process(
                     store,
                     session_id,
+                    staging_root=staging_root,
                     inbox_root=inbox_root,
                     work_root=work_root,
                     transcriber=transcriber,
