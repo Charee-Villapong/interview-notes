@@ -32,7 +32,7 @@
 
 - `FileEntry(name: str, size: int, sha256: str)`、`Manifest(session_id: str, files: list[FileEntry])`
 - `Manifest.from_dict(d)` / `Manifest.load(path)`
-- 系統の区別：ファイル名の接頭辞 `system`（相手）／`mic`（自分）
+- 系統の区別：ファイル名の接頭辞 `system`／`mic` による。系統と話者の対応は、正本 `../docs/状態管理.md`「話者マッピング」を参照
 
 ### `receive.py`
 
@@ -44,7 +44,7 @@
 
 ### `guards.py`
 
-- `AUDIO_VIDEO_EXTENSIONS: frozenset[str]`
+- `AUDIO_VIDEO_EXTENSIONS: frozenset[str]`（値の正本は `../docs/状態管理.md`「保存ガードの拡張子リスト」）
 - `find_audio_files(paths) -> list[Path]` — 音声・動画拡張子（大文字小文字を区別しない）に一致するものを返す
 - `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（保存中止）
 - `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ GitHub への下書き保存確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
@@ -56,29 +56,29 @@
 
 - `Segment(start: float, end: float, text: str)`
 - `Transcriber` — プロトコル。`transcribe(audio_path) -> list[Segment]`
-- `UnavailableTranscriber` — 常に `EngineNotConfiguredError` を送出する（STT未接続の現状を表す）
-- `merge_tracks(system_segments, mic_segments) -> list[tuple[str, Segment]]` — 時系列に合成し、話者ラベル（システム系統＝`"B"`、マイク系統＝`"A"`）を付ける
+- `UnavailableTranscriber` — 常に `EngineNotConfiguredError` を送出する（STT未接続の現状を表す。未接続時の扱いは正本 `../docs/状態管理.md`「STTエンジン未接続時の扱い」を参照）
+- `merge_tracks(system_segments, mic_segments) -> list[tuple[str, Segment]]` — 時系列に合成し、正本 `../docs/状態管理.md`「話者マッピング」に定める話者ラベルを付ける
 
 ### `runner.py`
 
-- `EventLog(path)` — `record(session_id, state, error_kind=None)` で JSONL に1行追記する。記録項目は日付・セッションID・状態・エラー種別のみ（内容・企業名・個人名を含めない設計）
+- `EventLog(path)` — `record(session_id, state, error_kind=None)` で JSONL に1行追記する。記録項目は日付・セッションID・状態・エラー種別のみ（内容・企業名・個人名を含めない設計。正本 `../docs/状態管理.md`「通知・ログ」参照）
 - `run_once(store, *, staging_root, inbox_root, work_root, transcriber, event_log) -> RunReport`
   - 全件走査し、`transferring`（検証待ち：マニフェストがあれば検証）、`received`（処理）、`needs_reprocess`（resume 先に応じて再開）を処理する
-  - 処理の順序：受信検証 → 文字起こし → 話者合成 → 作業用テキスト（`work/<session_id>/transcript.md`）生成 → `awaiting_editing`
+  - 処理の順序は、正本 `../docs/状態管理.md`「処理順序」のとおり（作業用テキストは `work/<session_id>/transcript.md` に生成する）
   - 失敗時はセッションを `needs_reprocess` にし、イベントを記録する。他件の処理は止めない
-  - 再試行に回数上限は設けない（`needs_reprocess` は毎ランの対象）
+  - 再試行の扱いは正本 `../docs/状態管理.md` を参照（回数上限なし・`needs_reprocess` は毎ランの対象）
 - `RunReport` — `processed: list[str]`、`failed: list[str]`、`skipped: list[str]`
 
 ### `saving.py`
 
 - `save_draft(store, session_id, draft_path, notes_dir, *, privacy_checker) -> Path`
-  - 保存前に `assert_no_audio_files` を通す。チェック対象は「この保存で配置する全ファイル」（現行APIではドラフト本体。配置先のファイル名は `<session_id>.md` 固定で、保存処理がドラフト以外を配置することはない）。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。なお、リポジトリ側の第二の防壁として、音声・動画拡張子は `.gitignore` でも除外されている
+  - 保存前に `assert_no_audio_files` を通す。チェック対象は「この保存で配置する全ファイル」（現行APIではドラフト本体。配置先のファイル名は `<session_id>.md` 固定で、保存処理がドラフト以外を配置することはない）。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。第二の防壁（`.gitignore`）については、正本 `../docs/状態管理.md`「保存ガードの拡張子リスト」を参照
   - `privacy_checker()` が False なら保存せず `RepositoryNotPrivateError` を送出する（保存先が非公開であることの確認）
-  - 成功時は md を `notes_dir/<日付>/<session_id>.md` へ配置し（下書き表記の検査：冒頭に「下書き（未照合）」を含むこと。含まなければ `DraftMarkingError`）、状態を `draft_saved` → `awaiting_review` へ進める
+  - 成功時は md を `notes_dir/<日付>/<session_id>.md` へ配置し（フォルダ・ファイル名の規則は正本 `../docs/状態管理.md`「セッション識別子」参照。下書き表記の検査は正本「下書き表記」のとおりとし、満たさなければ `DraftMarkingError`）、状態を `draft_saved` → `awaiting_review` へ進める
 
 ## CLI（`cli.py`）
 
-`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`run`、`status`、`mark-final`（照合完了→確定版保存済み化）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、保存先は `INTERVIEW_NOTES_DIR`。
+`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`run`、`status`、`mark-final`（照合完了→確定版保存済み化）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、保存先は `INTERVIEW_NOTES_DIR`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
 
 ## 決定事項（テスト係からの申し送りへの PM 回答。2026-11-07）
 
