@@ -103,11 +103,10 @@ def _process_received(
         files: list[Path] = []
         if inbox_dir.is_dir():
             files = sorted(p for p in inbox_dir.rglob("*") if p.is_file())
-        system_files = [
-            p for p in files if p.name.startswith("system") or "system" in p.name
-        ]
-        mic_files = [p for p in files if p.name.startswith("mic") or "mic" in p.name]
-        # 接頭辞で分類できないファイルは名前順に処理対象へ含める。
+        # 系統の区別はファイル名の接頭辞による（SPEC／正本）。
+        system_files = [p for p in files if p.name.startswith("system")]
+        mic_files = [p for p in files if p.name.startswith("mic")]
+        # 接頭辞で分類できないファイルも処理対象に含める（分類外）。
         classified = set(system_files) | set(mic_files)
         other_files = [p for p in files if p not in classified]
 
@@ -120,10 +119,7 @@ def _process_received(
         other_segments = []
         for path in other_files:
             other_segments.extend(transcriber.transcribe(path))
-        # 分類外は system 側に寄せず、そのまま末尾ではなく時系列合成へ含める。
-        # 話者不明分は mic 側（A）として扱わないため system_segments に足さず、
-        # merge 後に合成する代わりに、ここでは system 側に含める。
-        # ※ テストのダミーファイルはすべて system / mic のいずれかを含む。
+        # 分類外のセグメントは system 側（話者B）に含め、時系列合成の対象にする。
         if other_segments:
             system_segments.extend(other_segments)
 
