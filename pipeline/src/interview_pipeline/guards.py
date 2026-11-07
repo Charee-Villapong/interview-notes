@@ -80,7 +80,23 @@ def _state_name(session) -> str:
 
 
 def vm_copy_deletable(session) -> bool:
-    """処理完了かつ ``draft_saved_at`` 記録済みのときだけ True。"""
+    """処理完了かつ ``draft_saved`` 以降の状態で ``draft_saved_at``
+    記録済みのときだけ True。
+
+    正本 docs/状態管理.md「削除の条件」の二重条件: 処理完了
+    （``processing_completed``）と、GitHub への下書き保存確認
+    （``draft_saved`` 以降の状態で ``draft_saved_at`` が記録されて
+    いること）の両方を満たす必要がある。``needs_reprocess`` や
+    ``draft_saved`` より前の状態では False。
+    """
+    if _state_name(session) not in {
+        State.DRAFT_SAVED.value,
+        State.AWAITING_REVIEW.value,
+        State.FINAL_SAVED.value,
+        State.DELETABLE.value,
+        State.CLOSED.value,
+    }:
+        return False
     return bool(
         getattr(session, "processing_completed", False)
         and getattr(session, "draft_saved_at", None) is not None
