@@ -27,7 +27,7 @@
 
 前提：Xcode（または Swift ツールチェイン）と、VM 側パイプラインが動作していること。
 
-1. **バンドル ID を確定する（初回ビルド前に必須）**：`Resources/Info.plist` の `CFBundleIdentifier` と `signing-requirement.txt` の識別子を、確定する値に揃えて書き換える。TCC の同一性はこの2つで決まるため、後から変更しない。
+1. **バンドル ID の確認（初回ビルド前に必須）**：バンドル ID は `com.nishikawa.interviewrecorder` で確定済み（2026-11-08 本人確定）。`Resources/Info.plist` の `CFBundleIdentifier` と `signing-requirement.txt` の識別子がこの値で一致していることを確認する。TCC の同一性はこの2つで決まるため、後から変更しない。
 2. ビルドする：
    ```bash
    cd mac-app

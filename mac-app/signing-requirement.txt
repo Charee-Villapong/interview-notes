@@ -1,1 +1,1 @@
-designated => identifier "com.example.interviewrecorder"
+designated => identifier "com.nishikawa.interviewrecorder"

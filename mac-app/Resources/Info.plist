@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- バンドルIDは初回ビルド前に確定し、以後変更しないこと
+<!-- バンドルIDは 2026-11-08 に本人が確定した値で固定する。以後変更しないこと
      （TCC の同一性はバンドルIDと署名の指定要件で決まる。
      signing-requirement.txt の識別子と必ず一致させる）。 -->
 <plist version="1.0">
@@ -10,7 +10,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>面談レコーダー</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.example.interviewrecorder</string>
+	<string>com.nishikawa.interviewrecorder</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleShortVersionString</key>
