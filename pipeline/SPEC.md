@@ -210,3 +210,40 @@ V1 の実測（同一の正解テキスト付き日本語音声・同一条件�
 - エンジン生成は `cli._build_transcriber()` に集約する（テストでの差し替え点。`_build_gateway` と同じ流儀）
 - 環境変数 `INTERVIEW_STT_MODEL` が設定されていれば、そのモデル名で `FasterWhisperTranscriber` を返す。未設定・空の場合は従来どおり `UnavailableTranscriber` を返す（未設定時の扱いは正本どおり `stt_not_configured`）
 - `run` は `_build_transcriber()` の戻り値を使う
+
+## PULL 追加契約（転送のプル方式。2026-11-08 追記）
+
+本人の設計変更決定（2026-11-08）により、転送は Mac→VM プッシュから **VM 側プル** へ変更する。経緯と方式の正本は `../docs/状態管理.md`「転送方式（プル方式）」。12状態・遷移・マニフェスト・受信検証・削除ガードの契約は変更しない。変えるのは「誰がファイルを運ぶか」だけである。
+
+### `states.py` 追加
+
+- `ERROR_KIND_TRANSFER_FETCH_FAILED = "transfer_fetch_failed"` — プル取得の失敗（接続不可・ファイル欠落・マニフェスト取得失敗）の種別。検証不一致を表す `transfer_verification_failed` とは分ける
+
+### `errors.py` 追加
+
+- `MacFetchError` — Mac からの取得失敗を表す例外（例外型の集約先は決定事項 7 のとおり `errors.py`）
+
+### `pull.py`
+
+- `MacSessionRecord` — データクラス：`session_id: str`、`state: str`（Mac 側セッション記録の状態語彙）、`created_at: datetime | None`
+- `MacSource` — プロトコル。Mac へのアクセスはすべてここを通す（`gateway.py` の `GoogleGateway` と同じ流儀。テストはフェイク実装で切り分ける）：
+  - `list_sessions() -> list[MacSessionRecord]` — Mac 側セッション記録の一覧を返す。記録自体を取得できない場合は `MacFetchError` を送出する
+  - `fetch_file(session_id, name) -> bytes` — Mac 側の録音置き場から `<session_id>/<name>` の内容を取得する。失敗は `MacFetchError`
+- `SshMacSource(ssh_command, remote_app_dir)` — 既存の VM→Mac SSH 経路で取得する実装。`ssh_command` は SSH 実行コマンド（ラッパースクリプト等）へのパス、`remote_app_dir` は Mac 側のアプリデータ領域（`sessions.json` と `recordings/` の親ディレクトリ）。リモートの読み取りは標準出力経由で行い、接続先・パスの実値は引数（設定）でのみ与える
+- `PullReport` — `pulled: list[str]`、`failed: list[str]`、`skipped: list[str]`
+- `pull_pending(store, source, *, staging_root, inbox_root, event_log) -> PullReport` — Mac 側の一覧から転送対象を拾い、ステージング取得→受信検証までを行う：
+  - 対象は、Mac 側の状態が `recorded`／`transfer_pending`／`needs_reprocess` のセッション（録音確定済みで転送待ちのもの）。それ以外は対象にせず、レポートにも数えない
+  - セッションIDが正本の形式（`YYYY-MM-DD_NN`）に合わないレコードは、登録も取得もせず、イベント（error_kind=`transfer_fetch_failed`）を記録して `failed` に入れる（ステージングや録音置き場の外を触らないための担保。MacSource の実装に依らず `pull_pending` 側で検証する）
+  - VM 側で `received` 以降のセッションは再取得せず `skipped` に入れる（冪等。照合済みは再検証しない）
+  - VM 側に未登録のセッションは、Mac 側の `created_at` で `register` してから進める。`created_at` が無い・解釈できない場合は、セッションIDの日付部分（UTC 0時）で登録する
+  - 取得はマニフェスト（`manifest.json`）→マニフェストに載るファイルの順に行い、ステージング `<staging_root>/<session_id>/` へ配置する。再プル時はステージングを置き換える（正本「二重処理・二重保存の防止」）
+  - 取得失敗は、当該セッションを `needs_reprocess`（resume: `transfer_pending`、error_kind=`transfer_fetch_failed`）にしてイベントを記録し、`failed` に入れる。他件の処理は止めない
+  - 取得できたら、状態を正規の遷移経路で `transferring` まで進めてから、既存の `verify_and_promote` で検証・昇格する。成功は `pulled` に入れ、検証失敗は `failed` に入れる（検証失敗時の状態・種別は `verify_and_promote` の規則どおりとし、イベントも記録する）
+  - `event_log` は `runner.EventLog` と同じ記録方式（日付・セッションID・状態・エラー種別のみ）
+
+### CLI 追加（`cli.py`）
+
+- `pull` — `pull_pending` を実行し、レポートのリストを `pulled=[...] failed=[...] skipped=[...]` の形式で表示する（`run` の表示形式と同一）。失敗があれば終了コード 1 とする
+- セッション記録自体を取得できない全体失敗時は、リスト形式ではなく `failed: mac_fetch_failed` と表示して終了コード 1 とする（全体失敗を個別失敗の数え方と混同させないため）
+- 接続情報は環境変数 `INTERVIEW_MAC_SSH_COMMAND`（SSH 実行コマンドへのパス）と `INTERVIEW_MAC_APP_DIR`（Mac 側アプリデータ領域のパス）で与える。いずれか未設定なら明確なエラーで終了する（黙って成功扱いにしない）
+- ソース生成は `cli._build_mac_source()` に集約する（テストでの差し替え点。`_build_gateway` ／ `_build_transcriber` と同じ流儀）
