@@ -190,3 +190,23 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 
 - テンプレートの本文には、基本情報のプレースホルダ（`{{日時}}`／`{{企業}}`／`{{形式}}`／`{{会議URL}}`）と、準備（企業研究・想定問答・聞きたいこと）／振り返り（聞かれたこと・答え・次の一手）の見出しを置く。各セクションの初期本文は「（未記入）」とする（未記入チェックの機械判定に使う）
 - ノートのタイトルは `<session_id> 面談ノート` とする（企業名・個人名はタイトルに入れない。正本・運用方針どおり企業名はノート本文内にのみ書く）
+
+## V1 追加契約（STTエンジン接続。2026-11-08 追記）
+
+V1 の実測（同一の正解テキスト付き日本語音声・同一条件：faster-whisper／CPU 4スレッド／int8／language=ja／beam_size=5／vad_filter=False）に基づく接続契約。実測値の詳細は `docs/開発ノート.md`「V1 実測結果」を参照。
+
+### `transcribe.py` 追加
+
+- `FasterWhisperTranscriber` — faster-whisper を実エンジンとする `Transcriber` 実装
+  - 引数：`model_name`（既定は選定案モデル `large-v3-turbo`）、`compute_type="int8"`、`cpu_threads=4`、`language="ja"`、`beam_size=5`、`vad_filter=False`（いずれも実測と同一条件を既定とする）
+  - `faster_whisper` の import とモデル読み込みは遅延する（生成時には読み込まない。初回 `transcribe` 時に読み込み、以降は再利用する）。これにより、エンジン未導入の環境でもパッケージの import と他機能は使える
+  - テストでの差し替え点として、モデル生成関数を差し替え可能にする（実エンジンを要しない単体テストのため）
+  - `faster_whisper` が import できない環境では、`EngineNotConfiguredError`（`stt_not_configured`）を送出する（正本 `../docs/状態管理.md`「STTエンジン未接続時の扱い」に従い、未設定として扱う）
+  - 返却する `Segment` の `start`／`end`／`text` はエンジンのセグメント値をそのまま使う
+- モデルの選定は本契約時点では「選定案」であり、最終確定は J-9（本人の判断）。確定までは既定モデル名は選定案を指す
+
+### CLI 追加（`cli.py`）
+
+- エンジン生成は `cli._build_transcriber()` に集約する（テストでの差し替え点。`_build_gateway` と同じ流儀）
+- 環境変数 `INTERVIEW_STT_MODEL` が設定されていれば、そのモデル名で `FasterWhisperTranscriber` を返す。未設定・空の場合は従来どおり `UnavailableTranscriber` を返す（未設定時の扱いは正本どおり `stt_not_configured`）
+- `run` は `_build_transcriber()` の戻り値を使う
