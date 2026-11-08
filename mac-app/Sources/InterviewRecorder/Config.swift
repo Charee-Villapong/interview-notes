@@ -30,6 +30,17 @@ struct AppConfig: Codable {
     var resumeGraceSeconds: Int = 300
     /// 安全弁の上限（秒。確定値 10800 = 3時間）。
     var maxDurationSeconds: Int = 10800
+    /// VM への自動プッシュ転送を行うか。転送の正は VM 側からのプル
+    /// （本人の設計変更決定。2026-11-08。正本は docs/状態管理.md
+    /// 「転送方式（プル方式）」）であり、Mac→VM の接続経路は現行構成に
+    /// 無いため、運用設定では false にする。false の間は、録音確定時に
+    /// 転送待ちの記録に留め、エラー表示・再試行を行わない。
+    /// キーを置かない場合は従来どおり有効（true）として扱うため
+    /// Optional にし、旧形式の設定ファイルでも読み込めるようにしている。
+    var autoTransferEnabled: Bool? = nil
+
+    /// 自動転送を行うか（キー未設定時の既定は有効）。
+    var transferEnabled: Bool { autoTransferEnabled ?? true }
 
     static func load() throws -> AppConfig {
         let url = configFileURL()

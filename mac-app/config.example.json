@@ -1,4 +1,5 @@
 {
+  "autoTransferEnabled": false,
   "maxDurationSeconds": 10800,
   "remoteDataDir": "/path/to/interview-data",
   "remotePipelineDir": "/path/to/interview-notes/pipeline",

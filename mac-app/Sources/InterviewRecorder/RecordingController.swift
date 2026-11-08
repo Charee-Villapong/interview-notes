@@ -214,7 +214,13 @@ final class RecordingController {
             session.state = "transfer_pending"
             session.localPhase = "ready_to_transfer"
             self.store.upsert(session)
-            self.upload(session: session, sessionDir: sessionDir)
+            // 転送は VM 側からのプルが正（docs/状態管理.md「転送方式
+            // （プル方式）」）。自動プッシュが無効な設定では、ここで
+            // 転送待ちに留め、エラー表示・再試行は行わない
+            // （VM 側のプルが後から拾う）。
+            if self.config.transferEnabled {
+                self.upload(session: session, sessionDir: sessionDir)
+            }
             self.setPhase(.idle)
         }
     }
@@ -246,7 +252,10 @@ final class RecordingController {
     }
 
     /// 転送に失敗したまま残っているセッションを再転送する。
+    /// 自動プッシュが無効な設定では何もしない（プル方式では
+    /// VM 側が拾うため、起動時の再送で失敗を繰り返さない）。
     func retryPendingTransfers() {
+        guard config.transferEnabled else { return }
         for session in store.sessions
         where session.state == "needs_reprocess"
             && session.resumeState == "transfer_pending" {
