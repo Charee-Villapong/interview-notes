@@ -140,7 +140,7 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 - `sync_interviews(registry, gateway, config, *, store, now) -> SyncReport` — 検知ウィンドウ内の全カレンダーを走査し、検知した予定について次を行う（既存レコードは不足分だけを補う冪等動作）：
   1. 新規予定はセッションIDを採番してレジストリへ登録する
   2. Docsノートが無ければテンプレートから作成し、基本情報プレースホルダ（`日時`／`企業`／`形式`／`会議URL`）を置換する。失敗したら `note_error` に種別のみを記録し、成功扱いにしない
-  3. Sheets行が無ければ面談一覧へ1行追加する（列：日付・企業・形式・結果・次のアクション・Docsノートへのリンク）。行が既にあるかはレジストリとシート側の両方で確認する
+  3. Sheets行が無く、かつDocsノートのリンクが得られている場合に、面談一覧へ1行追加する（列：日付・企業・形式・結果・次のアクション・Docsノートへのリンク）。ノート未作成の間は行追加を保留し、失敗扱いにしない。行が既にあるかはレジストリとシート側の両方で確認する
   4. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
 - `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`rows_added: list[str]`、`failed: list[str]`
 
@@ -164,6 +164,7 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 - `remind-check --slot morning|evening [--dry-run]` — 送信対象のリマインドを JSON で表示する（記録はしない）
 - `remind-mark <event_id> <kind>` — リマインド送信済みを記録する
 - Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
+- CLI のゲートウェイ生成は `cli._build_gateway(config)` に集約する（テストでの差し替え点）
 
 ### Docsノート テンプレートの契約
 
