@@ -3,6 +3,7 @@
   "remoteDataDir": "/path/to/interview-data",
   "remotePipelineDir": "/path/to/interview-notes/pipeline",
   "remotePipelinePython": "python3",
+  "remotePythonPath": "src",
   "resumeGraceSeconds": 300,
   "silenceStopSeconds": 300,
   "silenceThresholdDb": -50.0,

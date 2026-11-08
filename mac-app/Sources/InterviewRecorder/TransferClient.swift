@@ -15,7 +15,10 @@ struct TransferClient {
 
     /// パイプライン CLI のリモートコマンド文字列を組み立てる。
     private func pipelineCommand(_ arguments: String) -> String {
-        let env = "INTERVIEW_DATA_DIR=\(shellQuote(config.remoteDataDir))"
+        var env = "INTERVIEW_DATA_DIR=\(shellQuote(config.remoteDataDir))"
+        if let pythonPath = config.remotePythonPath, !pythonPath.isEmpty {
+            env += " PYTHONPATH=\(shellQuote(pythonPath))"
+        }
         return "cd \(shellQuote(config.remotePipelineDir)) && \(env) "
             + "\(config.remotePipelinePython) -m interview_pipeline \(arguments)"
     }

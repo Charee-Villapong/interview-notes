@@ -16,6 +16,12 @@ struct AppConfig: Codable {
     var remotePipelineDir: String
     /// VM 側でパイプラインを実行する Python のコマンド名。
     var remotePipelinePython: String = "python3"
+    /// VM 側パイプラインのモジュール検索パス（`PYTHONPATH`）。
+    /// VM 側はパッケージをインストールせず `src` レイアウトのまま
+    /// 実行するのが正本の運用（cron の実行形式と同一）ため、未指定
+    /// （nil）でなく値を入れること。相対指定は `remotePipelineDir`
+    /// へ移動した後の相対として解釈される。
+    var remotePythonPath: String? = nil
     /// 無音とみなすレベル（dBFS）。校正は F1 の実測で行う。
     var silenceThresholdDb: Double = -50.0
     /// 両系統とも無音がこの秒数続いたら自動停止の対象にする（確定値 300 = 5分）。
