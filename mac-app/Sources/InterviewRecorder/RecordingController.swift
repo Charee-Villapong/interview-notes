@@ -78,7 +78,7 @@ final class RecordingController {
                 do {
                     try await self.systemCapture.start(fileURL: systemURL)
                 } catch {
-                    self.micCapture.stop()
+                    self.rollbackFailedStart(sessionId: sessionId)
                     self.onError?("system capture start: \(error)")
                 }
             }
@@ -94,6 +94,25 @@ final class RecordingController {
         } catch {
             onError?("recording start: \(error)")
         }
+    }
+
+    /// システム音声の開始が非同期に失敗したときの巻き戻し。
+    /// 録音中表示・タイマ・セッション情報を開始前の状態へ戻す。
+    /// この時点のセッションはストア未登録のため、作りかけの
+    /// セッションフォルダも残さない。
+    private func rollbackFailedStart(sessionId: String) {
+        guard phase == .recording, currentSessionId == sessionId else { return }
+        tickTimer?.invalidate()
+        tickTimer = nil
+        micCapture.stop()
+        currentSessionId = nil
+        recordingStartedAt = nil
+        graceDeadline = nil
+        silenceMonitor.reset()
+        let sessionDir = AppConfig.recordingsDir()
+            .appendingPathComponent(sessionId, isDirectory: true)
+        try? FileManager.default.removeItem(at: sessionDir)
+        setPhase(.idle)
     }
 
     /// 手動停止（主たる終了経路）。即時に転送対象にする
