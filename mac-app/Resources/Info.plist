@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- バンドルIDは初回ビルド前に確定し、以後変更しないこと
+     （TCC の同一性はバンドルIDと署名の指定要件で決まる。
+     signing-requirement.txt の識別子と必ず一致させる）。 -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>InterviewRecorder</string>
+	<key>CFBundleDisplayName</key>
+	<string>面談レコーダー</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.interviewrecorder</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>面談での自分の声を録音するためにマイクを使用します。</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>面談相手の声（システム音声）を録音するために使用します。</string>
+</dict>
+</plist>

@@ -29,3 +29,7 @@ __pycache__/
 data/
 *.sqlite3
 .pytest_cache/
+
+# Mac側ツールのビルド生成物（雛形はソースのみを管理する）
+mac-app/.build/
+mac-app/*.app/

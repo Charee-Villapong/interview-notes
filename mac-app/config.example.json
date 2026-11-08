@@ -1,0 +1,10 @@
+{
+  "maxDurationSeconds": 10800,
+  "remoteDataDir": "/path/to/interview-data",
+  "remotePipelineDir": "/path/to/interview-notes/pipeline",
+  "remotePipelinePython": "python3",
+  "resumeGraceSeconds": 300,
+  "silenceStopSeconds": 300,
+  "silenceThresholdDb": -50.0,
+  "sshHostAlias": "vm-host-alias"
+}
