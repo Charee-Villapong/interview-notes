@@ -9,6 +9,11 @@ description = "VM-side pipeline for interview notes (state management, transfer 
 requires-python = ">=3.12"
 dependencies = []
 
+# STT 実エンジン（faster-whisper）は任意依存。未導入の環境では
+# エンジン未設定として扱われ、パッケージ本体は依存なしで使える。
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

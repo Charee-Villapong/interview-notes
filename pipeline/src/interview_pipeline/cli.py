@@ -3,6 +3,8 @@
 使い方: ``python -m interview_pipeline <command>``
 データ領域は環境変数 ``INTERVIEW_DATA_DIR``、保存先は
 ``INTERVIEW_NOTES_DIR`` で受け取る（コードに実値を書かない）。
+STT のモデル名は ``INTERVIEW_STT_MODEL`` で受け取る（未設定なら
+エンジン未接続として扱う）。
 """
 
 from __future__ import annotations
@@ -40,7 +42,10 @@ from interview_pipeline.runner import EventLog, run_once
 from interview_pipeline.states import State
 from interview_pipeline.store import SessionStore
 from interview_pipeline.sync import detection_window, sync_interviews
-from interview_pipeline.transcribe import UnavailableTranscriber
+from interview_pipeline.transcribe import (
+    FasterWhisperTranscriber,
+    UnavailableTranscriber,
+)
 
 
 def _data_dir() -> Path:
@@ -71,6 +76,18 @@ def _google_config():
 def _build_gateway(config):
     """ゲートウェイ生成の集約点（テストでの差し替え点。SPEC P2契約）。"""
     return CliGoogleGateway(config)
+
+
+def _build_transcriber():
+    """STTエンジン生成の集約点（テストでの差し替え点。SPEC V1契約）。
+
+    環境変数 ``INTERVIEW_STT_MODEL`` が設定されていればそのモデル名で
+    実エンジンを返し、未設定・空なら未接続エンジンを返す。
+    """
+    model_name = os.environ.get("INTERVIEW_STT_MODEL")
+    if not model_name:
+        return UnavailableTranscriber()
+    return FasterWhisperTranscriber(model_name=model_name)
 
 
 def _registry(data_dir: Path) -> InterviewRegistry:
@@ -159,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             staging_root=data_dir / STAGING_DIRNAME,
             inbox_root=data_dir / INBOX_DIRNAME,
             work_root=data_dir / WORK_DIRNAME,
-            transcriber=UnavailableTranscriber(),
+            transcriber=_build_transcriber(),
             event_log=EventLog(data_dir / LOG_DIRNAME / EVENTS_FILENAME),
         )
         print(

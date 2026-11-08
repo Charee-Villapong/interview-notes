@@ -83,9 +83,7 @@ def test_run_uses_built_transcriber(cli_env, monkeypatch, capsys, make_transcrib
     out = capsys.readouterr().out
     assert f"processed=['{SID}']" in out
 
-    transcript = (cli_env / "work" / SID / "transcript.md").read_text(
-        encoding="utf-8"
-    )
+    transcript = (cli_env / "work" / SID / "transcript.md").read_text(encoding="utf-8")
     assert "B: SYSTEM-DUMMY-TEXT" in transcript
     assert "A: MIC-DUMMY-TEXT" in transcript
 
