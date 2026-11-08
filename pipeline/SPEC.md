@@ -198,12 +198,12 @@ V1 の実測（同一の正解テキスト付き日本語音声・同一条件�
 ### `transcribe.py` 追加
 
 - `FasterWhisperTranscriber` — faster-whisper を実エンジンとする `Transcriber` 実装
-  - 引数：`model_name`（既定は選定案モデル `large-v3-turbo`）、`compute_type="int8"`、`cpu_threads=4`、`language="ja"`、`beam_size=5`、`vad_filter=False`（いずれも実測と同一条件を既定とする）
+  - 引数：`model_name`（既定は本人確定モデル `large-v3-turbo`）、`compute_type="int8"`、`cpu_threads=4`、`language="ja"`、`beam_size=5`、`vad_filter=False`（いずれも実測と同一条件を既定とする）
   - `faster_whisper` の import とモデル読み込みは遅延する（生成時には読み込まない。初回 `transcribe` 時に読み込み、以降は再利用する）。これにより、エンジン未導入の環境でもパッケージの import と他機能は使える
   - テストでの差し替え点として、モデル生成関数を差し替え可能にする（実エンジンを要しない単体テストのため）
   - `faster_whisper` が import できない環境では、`EngineNotConfiguredError`（`stt_not_configured`）を送出する（正本 `../docs/状態管理.md`「STTエンジン未接続時の扱い」に従い、未設定として扱う）
   - 返却する `Segment` の `start`／`end`／`text` はエンジンのセグメント値をそのまま使う
-- モデルの選定は本契約時点では「選定案」であり、最終確定は J-9（本人の判断）。確定までは既定モデル名は選定案を指す
+- モデルは 2026-11-08 に本人が `large-v3-turbo` で確定した（V1 実測：CER 合計0.50%／RTF 0.703／ピークRSS 1,623MB）。既定モデル名はこの確定モデルを指す。なお、合格ライン（J-9）の確定値は台本リハーサルの実測後に本人が別途最終確定するものであり、本契約の暫定ラインはそのまま維持する
 
 ### CLI 追加（`cli.py`）
 

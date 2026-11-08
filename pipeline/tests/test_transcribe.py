@@ -207,7 +207,7 @@ def test_faster_whisper_transcriber_uses_bench_conditions(tmp_path):
 
 
 def test_faster_whisper_transcriber_default_model_is_selected_candidate():
-    """既定のモデル名は V1 選定案（large-v3-turbo）。"""
+    """既定のモデル名は本人が確定したモデル（large-v3-turbo）。"""
     from interview_pipeline.transcribe import FasterWhisperTranscriber
 
     transcriber = FasterWhisperTranscriber(

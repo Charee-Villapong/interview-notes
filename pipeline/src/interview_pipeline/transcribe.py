@@ -33,7 +33,7 @@ __all__ = [
 SPEAKER_LABEL_SYSTEM = "B"
 SPEAKER_LABEL_MIC = "A"
 
-# V1 の選定案モデル（最終確定は J-9。本人の判断）。
+# V1 のモデル。本人が 2026-11-08 に確定した。
 DEFAULT_STT_MODEL = "large-v3-turbo"
 
 # モデル生成関数の型（テストでの差し替え点）。
