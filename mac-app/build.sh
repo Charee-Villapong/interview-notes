@@ -21,4 +21,6 @@ cp "Resources/Info.plist" "${APP}/Contents/Info.plist"
 codesign --force --sign - --requirements signing-requirement.txt "${APP}"
 
 echo "built: ${APP}"
-codesign -d --entitlements - "${APP}" 2>/dev/null || true
+# codesign の表示出力は標準エラー側に出るため、潰さないこと
+# （エンタイトルメントが空であることの確認が目的。docs/P3計画.md）。
+codesign -d --entitlements - "${APP}" || true
