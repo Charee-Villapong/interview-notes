@@ -97,3 +97,75 @@
 ## テストの置き場
 
 `pipeline/tests/` に pytest で置く。Mac や外部接続が要る部分はモック／一時ディレクトリで切り分ける。
+
+## P2 追加契約（Google連携。2026-11-08 追記）
+
+P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノート／Sheets面談一覧→リマインド判定を追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
+
+### `google_config.py`
+
+- `GoogleConfig` — Google連携の設定。環境変数 `INTERVIEW_GOOGLE_CONFIG` が指す JSON ファイルから読み込む（実値はリポジトリに置かない）。主なキー：
+  `cli_path`（コネクタ CLI のパス）、`calendar_ids`（検知対象カレンダー）、`timezone`（日付判定のタイムゾーン）、`primary_keyword`（自己登録予定の主キー文字列）、`secondary_keywords`（自己登録予定の副キー文字列のリスト）、`invited_keywords`（招待予定の判定キーワード）、`sheets_spreadsheet_id`、`sheets_tab`、`docs_template_id`、`docs_folder_id`（任意）、`window_past_days`、`window_future_days`（検知ウィンドウ）
+- `load_google_config(path) -> GoogleConfig` — 欠けたキーは既定値（キーワード類・ウィンドウ・タイムゾーン）で補い、必須キー（`sheets_spreadsheet_id` 等）の不足は利用時に明確なエラーにする
+
+### `gateway.py`
+
+- `CalendarEvent` — データクラス：`event_id`、`calendar_id`、`title`、`start`、`end`、`organizer_email`、`organizer_self: bool`、`location`、`description`、`meeting_url`、`cancelled: bool`
+- `GoogleGateway` — プロトコル。外部（Google）へのアクセスはすべてここを通す：
+  - `list_events(calendar_id, time_min, time_max) -> list[CalendarEvent]`
+  - `copy_template(template_id, name, folder_id) -> tuple[str, str]` — テンプレートを複製し、(ドキュメントID, URL) を返す
+  - `replace_note_fields(doc_id, fields: dict[str, str])` — ノート内の `{{キー}}` プレースホルダを置換する
+  - `read_note_text(doc_id) -> str` — ノート本文の平文を返す（未記入チェック用）
+  - `append_sheet_row(spreadsheet_id, tab, values: list[str]) -> int` — 行を追加し、追加された行番号を返す
+  - `sheet_row_exists(spreadsheet_id, tab, session_id) -> bool` — セッションIDを含む行が既にあるか（二重追加防止の第二確認）
+- `CliGoogleGateway(config)` — `hatch_gws_cli` を subprocess で呼ぶ実装。失敗時は `GoogleGatewayError` を送出する
+- テストは `GoogleGateway` のフェイク実装で切り分ける（実接続しない）
+
+### `interviews.py`
+
+- `InterviewRecord` — データクラス：`event_id`、`session_id`、`date`（面談日。`YYYY-MM-DD`）、`start`、`end`、`title`、`company`（企業名の候補。抽出はベストエフォート）、`format`（形式）、`meeting_url`、`docs_doc_id`、`docs_url`、`sheet_row: int | None`、`note_error: str | None`、`sheet_error: str | None`、`reminders: dict[str, str]`（種別→送信日時）、`created_at`、`updated_at`
+- `InterviewRegistry(path)` — JSON ファイルへ永続化する。`SessionStore` と同じ流儀（インスタンス化時に自動で読み込む）
+  - `upsert(record) -> InterviewRecord` — `event_id` で冪等（既存なら既存を返す）
+  - `get_by_event(event_id)` / `get(session_id)` / `all()` / `save()`
+  - `assign_session_id(date, store) -> str` — 正本の採番規則（`<日付>_NN`）で、`SessionStore` の既存セッションとレジストリ内の同日レコードの両方と衝突しない最小の連番を返す
+- `is_interview_event(event, config) -> str | None` — 検知判定。検知した場合は根拠（`"primary"`／`"secondary"`／`"invited"`）、しなければ `None` を返す：
+  - キャンセル済み予定は常に対象外
+  - 自己登録予定（`organizer_self`）：タイトルに主キーを含めば `"primary"`、副キーを含めば `"secondary"`
+  - 招待予定：タイトルまたは説明文に招待キーワードを含めば `"invited"`
+- `extract_company(event) -> str` — タイトル中の括弧内先頭要素などから企業名の候補を抽出する（取れなければ空文字列。推測で埋めない）
+- `extract_format(event) -> str` — 場所または会議URLの種別から形式文字列を作る（取れなければ空文字列）
+
+### `sync.py`
+
+- `sync_interviews(registry, gateway, config, *, store, now) -> SyncReport` — 検知ウィンドウ内の全カレンダーを走査し、検知した予定について次を行う（既存レコードは不足分だけを補う冪等動作）：
+  1. 新規予定はセッションIDを採番してレジストリへ登録する
+  2. Docsノートが無ければテンプレートから作成し、基本情報プレースホルダ（`日時`／`企業`／`形式`／`会議URL`）を置換する。失敗したら `note_error` に種別のみを記録し、成功扱いにしない
+  3. Sheets行が無ければ面談一覧へ1行追加する（列：日付・企業・形式・結果・次のアクション・Docsノートへのリンク）。行が既にあるかはレジストリとシート側の両方で確認する
+  4. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
+- `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`rows_added: list[str]`、`failed: list[str]`
+
+### `reminders.py`
+
+- リマインド種別は `eve`（前日）／`day_morning`（当日・午前）／`day_evening`（当日・午後＝振り返り記入）の3つ
+- `due_reminders(registry, now, slot, *, note_texts) -> list[Reminder]` — 判定はコードで固定する：
+  - 面談日が翌日：`eve`（スロット不問。送信済みなら出さない）。本文には準備セクションの未記入項目を含める
+  - 面談日が当日かつ `slot == "morning"`：`day_morning`
+  - 面談日が当日かつ `slot == "evening"`：`day_evening`
+  - いずれでもない場合は空（何も送らない）
+- `unfilled_sections(note_text) -> list[str]` — テンプレートの準備セクション（企業研究・想定問答・聞きたいこと）のうち、本文が空または「（未記入）」のままのものを返す
+- `mark_reminded(registry, event_id, kind, at)` — 送信済みを記録する（`remind-check` では記録せず、送信後に `remind-mark` で記録する二段構え）
+- `Reminder` — `event_id`、`session_id`、`kind`、`text`（定型文で生成した通知文）
+
+### CLI 追加（`cli.py`）
+
+- `detect` — 検知ウィンドウを走査し、検知結果（セッションID候補・根拠）を表示するだけ（書き込みなし）
+- `sync` — `sync_interviews` を実行し、結果件数を表示する
+- `interviews` — 検知レジストリの一覧を表示する
+- `remind-check --slot morning|evening [--dry-run]` — 送信対象のリマインドを JSON で表示する（記録はしない）
+- `remind-mark <event_id> <kind>` — リマインド送信済みを記録する
+- Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
+
+### Docsノート テンプレートの契約
+
+- テンプレートの本文には、基本情報のプレースホルダ（`{{日時}}`／`{{企業}}`／`{{形式}}`／`{{会議URL}}`）と、準備（企業研究・想定問答・聞きたいこと）／振り返り（聞かれたこと・答え・次の一手）の見出しを置く。各セクションの初期本文は「（未記入）」とする（未記入チェックの機械判定に使う）
+- ノートのタイトルは `<session_id> 面談ノート` とする（企業名・個人名はタイトルに入れない。正本・運用方針どおり企業名はノート本文内にのみ書く）
