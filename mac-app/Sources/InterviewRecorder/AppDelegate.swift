@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreGraphics
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
