@@ -80,9 +80,9 @@ final class SystemAudioCapture: NSObject {
     /// TODO(F1): インターリーブ有無とチャンネル配置の実挙動は
     /// Mac 実働段階で実測し、この変換を確定する。
     private func pcmBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
-        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let format = AVAudioFormat(cmAudioFormatDescription: description)
+        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer)
         else { return nil }
+        let format = AVAudioFormat(cmAudioFormatDescription: description)
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
         guard frameCount > 0,
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
