@@ -5,6 +5,8 @@
 ``INTERVIEW_NOTES_DIR`` で受け取る（コードに実値を書かない）。
 STT のモデル名は ``INTERVIEW_STT_MODEL`` で受け取る（未設定なら
 エンジン未接続として扱う）。
+転送プル（``pull``）の接続情報は ``INTERVIEW_MAC_SSH_COMMAND`` と
+``INTERVIEW_MAC_APP_DIR`` で受け取る。
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from interview_pipeline.errors import MacFetchError
 from interview_pipeline.gateway import CliGoogleGateway
 from interview_pipeline.google_config import load_google_config
 from interview_pipeline.guards import (
@@ -36,6 +39,7 @@ from interview_pipeline.layout import (
     WORK_DIRNAME,
 )
 from interview_pipeline.manifest import Manifest
+from interview_pipeline.pull import SshMacSource, pull_pending
 from interview_pipeline.receive import verify_and_promote
 from interview_pipeline.reminders import due_reminders, mark_reminded
 from interview_pipeline.runner import EventLog, run_once
@@ -90,6 +94,23 @@ def _build_transcriber():
     return FasterWhisperTranscriber(model_name=model_name)
 
 
+def _build_mac_source():
+    """Mac ソース生成の集約点（テストでの差し替え点。SPEC PULL契約）。
+
+    環境変数 ``INTERVIEW_MAC_SSH_COMMAND``（VM→Mac の SSH 実行
+    コマンドへのパス）と ``INTERVIEW_MAC_APP_DIR``（Mac 側アプリ
+    データ領域のパス）で接続情報を与える。いずれか未設定・空なら
+    明確なエラーで終了する（黙って成功扱いにしない）。
+    """
+    ssh_command = os.environ.get("INTERVIEW_MAC_SSH_COMMAND")
+    if not ssh_command:
+        raise SystemExit("INTERVIEW_MAC_SSH_COMMAND is not set")
+    app_dir = os.environ.get("INTERVIEW_MAC_APP_DIR")
+    if not app_dir:
+        raise SystemExit("INTERVIEW_MAC_APP_DIR is not set")
+    return SshMacSource(ssh_command, app_dir)
+
+
 def _registry(data_dir: Path) -> InterviewRegistry:
     return InterviewRegistry(data_dir / STATE_DIRNAME / INTERVIEWS_FILENAME)
 
@@ -124,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_receive = subparsers.add_parser("receive")
     p_receive.add_argument("session_id")
+
+    subparsers.add_parser("pull")
 
     subparsers.add_parser("run")
 
@@ -169,6 +192,26 @@ def main(argv: list[str] | None = None) -> int:
         )
         print("ok" if result.ok else f"failed: {result.reason}")
         return 0 if result.ok else 1
+
+    if args.command == "pull":
+        source = _build_mac_source()
+        try:
+            report = pull_pending(
+                store,
+                source,
+                staging_root=data_dir / STAGING_DIRNAME,
+                inbox_root=data_dir / INBOX_DIRNAME,
+                event_log=EventLog(data_dir / LOG_DIRNAME / EVENTS_FILENAME),
+            )
+        except MacFetchError:
+            # セッション記録自体を取得できない全体失敗。種別のみを出す。
+            print("failed: mac_fetch_failed")
+            return 1
+        print(
+            f"pulled={report.pulled} failed={report.failed} "
+            f"skipped={report.skipped}"
+        )
+        return 0 if not report.failed else 1
 
     if args.command == "run":
         report = run_once(

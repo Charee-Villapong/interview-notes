@@ -41,3 +41,7 @@ class GoogleGatewayError(Exception):
 
 class GoogleConfigError(Exception):
     """Google連携の設定が読み込めない・不正である。"""
+
+
+class MacFetchError(Exception):
+    """Mac からの取得（転送プル）が失敗した。"""
