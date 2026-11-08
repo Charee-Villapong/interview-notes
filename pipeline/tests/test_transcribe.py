@@ -108,3 +108,123 @@ def test_unavailable_transcriber_raises_regardless_of_file(exc, tmp_path):
     transcriber = UnavailableTranscriber()
     with pytest.raises(exc("EngineNotConfiguredError")):
         transcriber.transcribe(Path(tmp_path) / "missing.m4a")
+
+
+class _FakeEngineSegment:
+    """faster-whisper のセグメント相当（start / end / text のみ持つ）。"""
+
+    def __init__(self, start, end, text):
+        self.start = start
+        self.end = end
+        self.text = text
+
+
+class _FakeEngineModel:
+    """faster-whisper のモデル相当。transcribe の呼び出しを記録する。"""
+
+    def __init__(self, segments):
+        self._segments = segments
+        self.calls = []
+
+    def transcribe(self, audio_path, **kwargs):
+        self.calls.append((audio_path, kwargs))
+        return iter(self._segments), None
+
+
+def _recording_factory(model, calls):
+    """モデル生成関数（差し替え点）のフェイク。生成引数を記録する。"""
+
+    def factory(model_name, *, compute_type, cpu_threads):
+        calls.append(
+            {
+                "model_name": model_name,
+                "compute_type": compute_type,
+                "cpu_threads": cpu_threads,
+            }
+        )
+        return model
+
+    return factory
+
+
+def test_faster_whisper_transcriber_converts_segments(tmp_path):
+    """エンジンのセグメントが Segment（start / end / text）へ変換される。"""
+    from interview_pipeline.transcribe import FasterWhisperTranscriber
+
+    model = _FakeEngineModel(
+        [
+            _FakeEngineSegment(0.0, 1.25, "最初の発話"),
+            _FakeEngineSegment(1.25, 3.5, "次の発話"),
+        ]
+    )
+    transcriber = FasterWhisperTranscriber(
+        model_name="dummy-model", model_factory=_recording_factory(model, [])
+    )
+
+    segments = transcriber.transcribe(tmp_path / "system_track.m4a")
+
+    assert [(s.start, s.end, s.text) for s in segments] == [
+        (0.0, 1.25, "最初の発話"),
+        (1.25, 3.5, "次の発話"),
+    ]
+
+
+def test_faster_whisper_transcriber_loads_model_lazily_and_reuses(tmp_path):
+    """モデルは生成時には読み込まず、初回 transcribe で1回だけ生成する。"""
+    from interview_pipeline.transcribe import FasterWhisperTranscriber
+
+    calls = []
+    model = _FakeEngineModel([_FakeEngineSegment(0.0, 1.0, "発話")])
+    transcriber = FasterWhisperTranscriber(
+        model_name="dummy-model", model_factory=_recording_factory(model, calls)
+    )
+    assert calls == []
+
+    transcriber.transcribe(tmp_path / "a.m4a")
+    transcriber.transcribe(tmp_path / "b.m4a")
+
+    assert len(calls) == 1
+
+
+def test_faster_whisper_transcriber_uses_bench_conditions(tmp_path):
+    """生成・変換の引数は実測と同一条件（int8／4スレッド／ja／beam 5／VADなし）。"""
+    from interview_pipeline.transcribe import FasterWhisperTranscriber
+
+    calls = []
+    model = _FakeEngineModel([])
+    transcriber = FasterWhisperTranscriber(
+        model_factory=_recording_factory(model, calls)
+    )
+
+    transcriber.transcribe(tmp_path / "a.m4a")
+
+    assert calls[0]["compute_type"] == "int8"
+    assert calls[0]["cpu_threads"] == 4
+    _, kwargs = model.calls[0]
+    assert kwargs["language"] == "ja"
+    assert kwargs["beam_size"] == 5
+    assert kwargs["vad_filter"] is False
+
+
+def test_faster_whisper_transcriber_default_model_is_selected_candidate():
+    """既定のモデル名は V1 選定案（large-v3-turbo）。"""
+    from interview_pipeline.transcribe import FasterWhisperTranscriber
+
+    transcriber = FasterWhisperTranscriber(
+        model_factory=_recording_factory(_FakeEngineModel([]), [])
+    )
+    assert transcriber.model_name == "large-v3-turbo"
+
+
+def test_faster_whisper_transcriber_missing_engine_is_not_configured(exc, tmp_path):
+    """エンジンが import できない場合は「未設定」として扱われる。"""
+    from interview_pipeline.transcribe import FasterWhisperTranscriber
+
+    def failing_factory(model_name, *, compute_type, cpu_threads):
+        raise ImportError("No module named 'faster_whisper' (dummy)")
+
+    transcriber = FasterWhisperTranscriber(
+        model_name="dummy-model", model_factory=failing_factory
+    )
+    with pytest.raises(exc("EngineNotConfiguredError")):
+        transcriber.transcribe(tmp_path / "a.m4a")
