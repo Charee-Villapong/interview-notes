@@ -21,7 +21,7 @@ from interview_pipeline.errors import GoogleGatewayError
 from interview_pipeline.gateway import CliGoogleGateway
 from interview_pipeline.google_config import load_google_config
 
-FAKE_CLI_OK = '''
+FAKE_CLI_OK = """
 import json
 import os
 import sys
@@ -42,9 +42,9 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
-'''
+"""
 
-FAKE_CLI_FAIL = '''
+FAKE_CLI_FAIL = """
 import sys
 
 
@@ -55,7 +55,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
-'''
+"""
 
 VALUES = ["2026-11-10", "ダミー社", "オンライン", "", "", "https://example.com/dummy"]
 

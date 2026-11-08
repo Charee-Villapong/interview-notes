@@ -39,6 +39,7 @@ class GoogleConfig:
     )
     sheets_spreadsheet_id: str | None = None
     sheets_tab: str = DEFAULT_SHEETS_TAB
+    sheet_writer_src: str | None = None
     docs_template_id: str | None = None
     docs_folder_id: str | None = None
     window_past_days: int = DEFAULT_WINDOW_PAST_DAYS
@@ -54,6 +55,7 @@ _KNOWN_KEYS = {
     "invited_keywords",
     "sheets_spreadsheet_id",
     "sheets_tab",
+    "sheet_writer_src",
     "docs_template_id",
     "docs_folder_id",
     "window_past_days",

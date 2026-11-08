@@ -10,10 +10,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
+from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -33,6 +37,25 @@ _MEETING_URL_RE = re.compile(
     r"https?://(?:meet\.google\.com|[\w.-]*zoom\.us|teams\.microsoft\.com"
     r"|teams\.live\.com)[^\s\"'<>）)]*"
 )
+
+#: 面談一覧の列ポリシー（sheet-writer 用）。
+#: A 日付 / B 企業 / C 形式は fit、D 結果 / E 次のアクション / F Docsノートは wrap。
+SHEET_WRITER_COLUMNS = {
+    "A": {"mode": "fit"},
+    "B": {"mode": "fit"},
+    "C": {"mode": "fit"},
+    "D": {"mode": "wrap", "width_px": 300},
+    "E": {"mode": "wrap", "width_px": 300},
+    "F": {"mode": "wrap", "width_px": 300},
+}
+
+
+def _default_sheet_writer_src() -> Path:
+    """sheet-writer の src ディレクトリの既定値（兄弟ミラー配置から導出）。
+
+    設定 ``sheet_writer_src`` があればそちらが優先される。
+    """
+    return Path(__file__).resolve().parents[4] / "sheet-writer" / "src"
 
 
 def extract_meeting_url(text: str | None) -> str:
@@ -251,24 +274,66 @@ class CliGoogleGateway:
     # -- Sheets --------------------------------------------------------
 
     def append_sheet_row(self, spreadsheet_id: str, tab: str, values: list[str]) -> int:
+        """面談一覧へ1行追加する。書式の担保は sheet-writer tool に委ねる。
+
+        見切れ防止を構造で担保するため（2026-11-08 本人決定）、Sheets API の
+        直接 append はせず、sheet-writer の CLI を subprocess で呼ぶ。
+        tool 側で列幅・折り返し・行高の設定と読み戻し検証まで行われ、
+        検証失敗は非0終了として返る。行番号が読み取れない場合は
+        「追加済み・番号不明」として -1 を返す。
+        """
         if not spreadsheet_id:
             raise GoogleGatewayError("sheets_spreadsheet_id is not configured")
-        payload = self._run(
-            "sheets",
-            "spreadsheets",
-            "values",
-            "append",
-            params={
-                "spreadsheetId": spreadsheet_id,
-                "range": f"{tab}!A:F",
-                "valueInputOption": "USER_ENTERED",
-            },
-            body={"values": [list(values)]},
+        src = (
+            Path(self._config.sheet_writer_src)
+            if self._config.sheet_writer_src
+            else _default_sheet_writer_src()
         )
-        updated = payload.get("updates", {}) if isinstance(payload, dict) else {}
-        updated_range = str(updated.get("updatedRange", ""))
-        match = re.search(r"![A-Z]+(\d+)", updated_range)
-        # 行番号が読み取れない場合は「追加済み・番号不明」として -1 を返す。
+        if not src.is_dir():
+            raise GoogleGatewayError(f"sheet-writer not found: {src}")
+        payload = {
+            "targets": {
+                "interviews": {
+                    "spreadsheet_id": spreadsheet_id,
+                    "tab": tab,
+                    "columns": SHEET_WRITER_COLUMNS,
+                }
+            }
+        }
+        config_file = tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False, encoding="utf-8"
+        )
+        try:
+            json.dump(payload, config_file, ensure_ascii=False)
+            config_file.close()
+            command = [
+                sys.executable,
+                "-m",
+                "sheet_writer.cli",
+                "append",
+                "--config",
+                config_file.name,
+                "--target",
+                "interviews",
+                "--row",
+                json.dumps(list(values), ensure_ascii=False),
+            ]
+            env = dict(os.environ)
+            existing = env.get("PYTHONPATH")
+            env["PYTHONPATH"] = str(src) + (os.pathsep + existing if existing else "")
+            try:
+                completed = subprocess.run(
+                    command, capture_output=True, text=True, check=False, env=env
+                )
+            except OSError as exc:
+                raise GoogleGatewayError(f"sheet-writer not runnable: {exc}") from exc
+        finally:
+            config_file.close()
+            Path(config_file.name).unlink(missing_ok=True)
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise GoogleGatewayError(f"sheet-writer append failed: {detail[:200]}")
+        match = re.search(r"rows=(\d+)", completed.stdout)
         return int(match.group(1)) if match else -1
 
     def sheet_row_exists(self, spreadsheet_id: str, tab: str, session_id: str) -> bool:
