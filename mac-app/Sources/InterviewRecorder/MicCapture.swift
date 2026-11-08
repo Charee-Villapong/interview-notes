@@ -7,6 +7,7 @@ import AVFoundation
 final class MicCapture {
     private let engine = AVAudioEngine()
     private var audioFile: AVAudioFile?
+    private var converter: AudioFormatConverter?
     private(set) var isCapturing = false
 
     /// レベル（dBFS）の通知。無音検知に使う。
@@ -17,25 +18,27 @@ final class MicCapture {
     func start(fileURL: URL) throws {
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
-        // 書き出しは AAC（.m4a）。サンプルレートは入力に合わせ、
-        // 48kHz への統一（コンバータ要否）は F1 の実測で確定する。
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: inputFormat.sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 64_000,
-        ]
-        audioFile = try AVAudioFile(
-            forWriting: fileURL, settings: settings,
-            commonFormat: inputFormat.commonFormat,
-            interleaved: inputFormat.isInterleaved
-        )
+        // 書き出しは AAC（.m4a）・48kHz・モノラルに統一する
+        // （AudioFileWriter 参照。入力のサンプルレートで開くと
+        // この Mac の 16kHz 入力ではビットレート設定が失敗する）。
+        // 入力バッファは変換器で書き出し形式へ変換してから書く。
+        let file = try AudioFileWriter.openFile(url: fileURL)
+        guard
+            let formatConverter = AudioFormatConverter(
+                from: inputFormat, to: file.processingFormat)
+        else {
+            throw AudioWriteError.converterUnavailable
+        }
+        audioFile = file
+        converter = formatConverter
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) {
             [weak self] buffer, _ in
             guard let self else { return }
             do {
-                try self.audioFile?.write(from: buffer)
+                if let converted = try self.converter?.convert(buffer) {
+                    try self.audioFile?.write(from: converted)
+                }
             } catch {
                 self.onError?(error)
             }
@@ -53,5 +56,6 @@ final class MicCapture {
         }
         isCapturing = false
         audioFile = nil
+        converter = nil
     }
 }

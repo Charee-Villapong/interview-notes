@@ -11,7 +11,7 @@ import ScreenCaptureKit
 final class SystemAudioCapture: NSObject {
     private var stream: SCStream?
     private var audioFile: AVAudioFile?
-    private var fileFormat: AVAudioFormat?
+    private var converter: AudioFormatConverter?
     private(set) var isCapturing = false
 
     /// レベル（dBFS）の通知。無音検知に使う。
@@ -55,25 +55,25 @@ final class SystemAudioCapture: NSObject {
         isCapturing = false
         stream = nil
         audioFile = nil
-        fileFormat = nil
+        converter = nil
     }
 
     private var pendingFileURL: URL?
 
     /// 最初の音声サンプルでフォーマットを確定し、書き出しファイルを開く。
+    /// ファイル自体は 48kHz・モノラル統一（AudioFileWriter）で開き、
+    /// サンプルの形式から書き出し形式への変換器もここで作る。
     private func openFileIfNeeded(format: AVAudioFormat) throws {
         guard audioFile == nil, let url = pendingFileURL else { return }
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 64_000,
-        ]
-        audioFile = try AVAudioFile(
-            forWriting: url, settings: settings,
-            commonFormat: format.commonFormat, interleaved: format.isInterleaved
-        )
-        fileFormat = format
+        let file = try AudioFileWriter.openFile(url: url)
+        guard
+            let formatConverter = AudioFormatConverter(
+                from: format, to: file.processingFormat)
+        else {
+            throw AudioWriteError.converterUnavailable
+        }
+        audioFile = file
+        converter = formatConverter
     }
 
     /// CMSampleBuffer（音声）を AVAudioPCMBuffer へ移す。
@@ -112,7 +112,9 @@ extension SystemAudioCapture: SCStreamOutput {
         guard let buffer = pcmBuffer(from: sampleBuffer) else { return }
         do {
             try openFileIfNeeded(format: buffer.format)
-            try audioFile?.write(from: buffer)
+            if let converted = try converter?.convert(buffer) {
+                try audioFile?.write(from: converted)
+            }
         } catch {
             onError?(error)
         }
