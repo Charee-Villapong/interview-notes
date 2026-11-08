@@ -166,6 +166,20 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 - Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
 - CLI のゲートウェイ生成は `cli._build_gateway(config)` に集約する（テストでの差し替え点）
 
+### P2 決定事項（テスト係からの申し送りへの PM 回答。2026-11-08）
+
+1. 検知ウィンドウの既定値は、過去1日・未来31日とする。
+2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。`sheets_spreadsheet_id` が無い状態でのシート操作は `GoogleGatewayError` とする。
+3. `note_error`／`sheet_error` には例外クラス名のみを記録する（例外メッセージ等の内容は記録しない）。
+4. `CalendarEvent`／`InterviewRecord` の `start`／`end` はタイムゾーン付き `datetime` とし、レジストリの永続化では ISO 文字列へ変換する。
+5. `due_reminders` の `note_texts` のキーは `event_id` を主とし、`session_id` でも引けるようにする。
+6. `InterviewRegistry.get_by_event`／`get` は、未登録なら `None` を返す。
+7. `assign_session_id` の引数 `date` は `YYYY-MM-DD` 文字列とする。
+8. `remind-check` の JSON は、`Reminder` の `event_id`／`session_id`／`kind`／`text` をキーとするオブジェクトのリストとする。
+9. ノート作成の失敗は `SyncReport.failed` に入れない（`note_error` とイベントログで可視化する）。`failed` はカレンダー取得の失敗など想定外の失敗用とし、その場合はカレンダーIDを入れる。`sync_interviews` には任意引数 `event_log` を追加し、CLI はデータ領域のイベントログを渡す。
+10. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
+11. `sheet_row` が `-1` の場合は「シート側に既存の行がある（行番号は不明）」を表す番兵値とする（レジストリを失った場合の二重追加防止）。
+
 ### Docsノート テンプレートの契約
 
 - テンプレートの本文には、基本情報のプレースホルダ（`{{日時}}`／`{{企業}}`／`{{形式}}`／`{{会議URL}}`）と、準備（企業研究・想定問答・聞きたいこと）／振り返り（聞かれたこと・答え・次の一手）の見出しを置く。各セクションの初期本文は「（未記入）」とする（未記入チェックの機械判定に使う）
