@@ -1,12 +1,15 @@
 """コマンドライン入口。
 
 使い方: ``python -m interview_pipeline <command>``
-データ領域は環境変数 ``INTERVIEW_DATA_DIR``、保存先は
-``INTERVIEW_NOTES_DIR`` で受け取る（コードに実値を書かない）。
+データ領域は環境変数 ``INTERVIEW_DATA_DIR`` で受け取る
+（コードに実値を書かない）。
 STT のモデル名は ``INTERVIEW_STT_MODEL`` で受け取る（未設定なら
 エンジン未接続として扱う）。
 転送プル（``pull``）の接続情報は ``INTERVIEW_MAC_SSH_COMMAND`` と
 ``INTERVIEW_MAC_APP_DIR`` で受け取る。
+要約の push 先は ``INTERVIEW_NOTES_REPO``（``owner/repo`` 形式の
+非公開リポジトリ）で受け取る。gh コマンドのパスは
+``INTERVIEW_GH_COMMAND`` で上書きできる（未設定なら ``gh``）。
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from interview_pipeline.errors import MacFetchError
+from interview_pipeline.errors import MacFetchError, NotePublishError
 from interview_pipeline.guards import (
     execute_vm_deletion,
     mac_deletion_eligible,
@@ -27,15 +30,19 @@ from interview_pipeline.layout import (
     INBOX_DIRNAME,
     LOG_DIRNAME,
     MANIFEST_FILENAME,
+    NOTE_FILENAME,
     SESSIONS_FILENAME,
     STAGING_DIRNAME,
     STATE_DIRNAME,
     WORK_DIRNAME,
 )
 from interview_pipeline.manifest import Manifest
+from interview_pipeline.publish import GhGitHubClient, publish_note
 from interview_pipeline.pull import SshMacSource, pull_pending
 from interview_pipeline.receive import verify_and_promote
 from interview_pipeline.runner import EventLog, run_once
+from interview_pipeline.saving import save_note
+from interview_pipeline.states import ERROR_KIND_NOTE_PUBLISH_FAILED, State
 from interview_pipeline.store import SessionStore
 from interview_pipeline.transcribe import (
     FasterWhisperTranscriber,
@@ -50,11 +57,16 @@ def _data_dir() -> Path:
     return Path(value)
 
 
-def _notes_dir() -> Path:
-    value = os.environ.get("INTERVIEW_NOTES_DIR")
+def _notes_repo() -> str:
+    value = os.environ.get("INTERVIEW_NOTES_REPO")
     if not value:
-        raise SystemExit("INTERVIEW_NOTES_DIR is not set")
-    return Path(value)
+        raise SystemExit("INTERVIEW_NOTES_REPO is not set")
+    return value
+
+
+def _build_github_client():
+    """GitHub クライアント生成の集約点（テストでの差し替え点）。"""
+    return GhGitHubClient(command=os.environ.get("INTERVIEW_GH_COMMAND") or "gh")
 
 
 def _store(data_dir: Path) -> SessionStore:
@@ -115,6 +127,12 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("run")
 
     subparsers.add_parser("status")
+
+    p_save = subparsers.add_parser("save-note")
+    p_save.add_argument("session_id")
+
+    p_publish = subparsers.add_parser("publish-note")
+    p_publish.add_argument("session_id")
 
     p_delete = subparsers.add_parser("delete-vm-copy")
     p_delete.add_argument("session_id")
@@ -178,6 +196,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         for session in store.all():
             print(f"{session.session_id} {session.state.value}")
+        return 0
+
+    if args.command == "save-note":
+        note_path = data_dir / WORK_DIRNAME / args.session_id / NOTE_FILENAME
+        saved = save_note(store, args.session_id, note_path)
+        print(f"saved {saved}")
+        return 0
+
+    if args.command == "publish-note":
+        note_path = data_dir / WORK_DIRNAME / args.session_id / NOTE_FILENAME
+        try:
+            url = publish_note(
+                store,
+                args.session_id,
+                note_path,
+                notes_repo=_notes_repo(),
+                github=_build_github_client(),
+            )
+        except NotePublishError:
+            # 失敗はイベントとして記録し、種別のみを出す（silent failure 禁止）。
+            EventLog(data_dir / LOG_DIRNAME / EVENTS_FILENAME).record(
+                args.session_id,
+                State.DRAFT_SAVED,
+                error_kind=ERROR_KIND_NOTE_PUBLISH_FAILED,
+            )
+            print("failed: note_publish_failed")
+            return 1
+        print(url)
         return 0
 
     if args.command == "delete-vm-copy":

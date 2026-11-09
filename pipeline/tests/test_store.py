@@ -115,6 +115,20 @@ def test_transition_to_final_saved_records_timestamp(
     assert session.final_saved_at is not None
 
 
+def test_note_published_at_persists_across_reload(make_store, drive_to, t0):
+    """note_published_at は保存・再読み込みで保持される（既定は None）。"""
+    store = make_store()
+    store.register(SID, t0)
+    assert store.get(SID).note_published_at is None
+
+    session = store.get(SID)
+    session.note_published_at = t0
+    store.save()
+
+    reloaded = make_store()
+    assert reloaded.get(SID).note_published_at == t0
+
+
 def test_transition_to_needs_reprocess_records_error_and_resume(
     make_store, drive_to, state_of, state_name, t0
 ):

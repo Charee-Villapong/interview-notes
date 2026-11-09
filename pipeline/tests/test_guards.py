@@ -265,14 +265,29 @@ def test_execute_vm_deletion_refused_without_processing_completed(
 
 
 def test_mac_eligible_when_final_saved(make_store, drive_to, t0):
-    """final_saved 到達済み＋未処理でないときだけ True。"""
+    """final_saved 到達済み＋push 記録あり＋未処理でないときだけ True。"""
     from interview_pipeline.guards import mac_deletion_eligible
 
     store, _ = _session(make_store, t0)
     drive_to(store, SID, "final_saved")
     session = store.get(SID)
+    session.note_published_at = t0
+    store.save()
     assert session.final_saved_at is not None
     assert mac_deletion_eligible(session) is True
+
+
+def test_mac_not_eligible_when_final_saved_without_publish_record(
+    make_store, drive_to, t0
+):
+    """final_saved でも push 記録が無ければ False（push 前は消さない）。"""
+    from interview_pipeline.guards import mac_deletion_eligible
+
+    store, _ = _session(make_store, t0)
+    drive_to(store, SID, "final_saved")
+    session = store.get(SID)
+    assert session.note_published_at is None
+    assert mac_deletion_eligible(session) is False
 
 
 def test_mac_not_eligible_before_final_saved(make_store, drive_to, t0):
@@ -292,6 +307,9 @@ def test_mac_not_eligible_when_needs_reprocess_even_if_final_saved_before(
 
     store, _ = _session(make_store, t0)
     drive_to(store, SID, "final_saved")
+    session = store.get(SID)
+    session.note_published_at = t0
+    store.save()
     store.transition(
         SID,
         state_of("needs_reprocess"),
@@ -330,12 +348,15 @@ def _needs_reprocess_state():
 
 
 def test_mac_eligible_for_old_final_saved_session(make_store, drive_to, t0):
-    """逆に、古くても final_saved 済みなら True（経過日数は条件でない）。"""
+    """逆に、古くても push 済みなら True（経過日数は条件でない）。"""
     from interview_pipeline.guards import mac_deletion_eligible
 
     old = t0 - timedelta(days=30)
     store, _ = _session(make_store, t0, created_at=old)
     drive_to(store, SID, "final_saved")
+    session = store.get(SID)
+    session.note_published_at = t0
+    store.save()
     assert mac_deletion_eligible(store.get(SID)) is True
 
 

@@ -16,6 +16,7 @@ from interview_pipeline.errors import InvalidTransitionError
 
 __all__ = [
     "ERROR_KIND_AUDIO_CONTENT_DETECTED",
+    "ERROR_KIND_NOTE_PUBLISH_FAILED",
     "ERROR_KIND_PROCESSING_FAILED",
     "ERROR_KIND_STT_NOT_CONFIGURED",
     "ERROR_KIND_TRANSFER_FETCH_FAILED",
@@ -39,6 +40,7 @@ ERROR_KIND_STT_NOT_CONFIGURED = "stt_not_configured"
 ERROR_KIND_PROCESSING_FAILED = "processing_failed"
 ERROR_KIND_AUDIO_CONTENT_DETECTED = "audio_content_detected"
 ERROR_KIND_UNCLASSIFIED_TRACK_FILE = "unclassified_track_file"
+ERROR_KIND_NOTE_PUBLISH_FAILED = "note_publish_failed"
 
 
 class State(str, Enum):

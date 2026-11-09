@@ -5,6 +5,8 @@ SPEC ``store.py`` 契約と決定事項 8・9・10 に従う:
 - ``processing_completed`` は ``awaiting_editing`` への遷移時に立てる。
 - ``SessionStore`` はインスタンス化時に既存ファイルがあれば自動で読み込む。
 - ``draft_saved`` / ``final_saved`` への遷移時に日時を自動で記録する。
+- ``note_published_at`` は publish の成功確認時に publish 側が記録する
+  （遷移の自動記録の対象外）。
 """
 
 from __future__ import annotations
@@ -62,6 +64,7 @@ class Session:
     error_kind: str | None = None
     draft_saved_at: datetime | None = None
     final_saved_at: datetime | None = None
+    note_published_at: datetime | None = None
     vm_copy_deleted_at: datetime | None = None
     mac_copy_deleted_at: datetime | None = None
     processing_completed: bool = False
@@ -75,6 +78,7 @@ class Session:
             "error_kind": self.error_kind,
             "draft_saved_at": _datetime_to_str(self.draft_saved_at),
             "final_saved_at": _datetime_to_str(self.final_saved_at),
+            "note_published_at": _datetime_to_str(self.note_published_at),
             "vm_copy_deleted_at": _datetime_to_str(self.vm_copy_deleted_at),
             "mac_copy_deleted_at": _datetime_to_str(self.mac_copy_deleted_at),
             "processing_completed": bool(self.processing_completed),
@@ -90,6 +94,7 @@ class Session:
             error_kind=data.get("error_kind"),
             draft_saved_at=_datetime_from_str(data.get("draft_saved_at")),
             final_saved_at=_datetime_from_str(data.get("final_saved_at")),
+            note_published_at=_datetime_from_str(data.get("note_published_at")),
             vm_copy_deleted_at=_datetime_from_str(data.get("vm_copy_deleted_at")),
             mac_copy_deleted_at=_datetime_from_str(data.get("mac_copy_deleted_at")),
             processing_completed=bool(data.get("processing_completed", False)),

@@ -13,7 +13,7 @@ stdout・receive の成功／失敗・run のログ配置を固定済み。
 本ファイルが固定するのは残りの CLI 挙動:
 - コマンド未指定／未知コマンドの終了コード（argparse の SystemExit 2）
 - ``INTERVIEW_DATA_DIR`` 未設定時の SystemExit とメッセージ
-- ``INTERVIEW_NOTES_DIR`` は現行の CLI コマンドが参照しないこと
+- ``INTERVIEW_NOTES_REPO`` は publish-note のみが参照すること
 - ``--created-at`` の解釈（省略時は現在時刻 UTC、naive は UTC 補完、
   aware はオフセット保持、日付のみは 00:00 UTC、不正値は ValueError）
 - register の冪等性、status の空／複数件出力
@@ -39,13 +39,16 @@ CREATED = "2026-11-09T09:00:00+00:00"
 
 @pytest.fixture
 def cli_env(tmp_path, monkeypatch):
-    """データ領域と保存先を一時ディレクトリへ向けた環境を返す。"""
+    """データ領域を一時ディレクトリへ向け、push 先を設定した環境を返す。
+
+    戻り値の2番目は互換のための予備パス（現行コマンドは参照しない）。
+    """
     data_dir = tmp_path / "data"
     notes_dir = tmp_path / "notes"
     data_dir.mkdir(parents=True, exist_ok=True)
     notes_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("INTERVIEW_DATA_DIR", str(data_dir))
-    monkeypatch.setenv("INTERVIEW_NOTES_DIR", str(notes_dir))
+    monkeypatch.setenv("INTERVIEW_NOTES_REPO", "owner/notes-repo")
     return data_dir, notes_dir
 
 
@@ -127,6 +130,8 @@ def test_cli_missing_session_argument_exits_with_code_2(cli_env):
         ["receive", SID],
         ["run"],
         ["status"],
+        ["save-note", SID],
+        ["publish-note", SID],
         ["delete-vm-copy", SID],
         ["mac-eligible", SID],
     ],
@@ -142,16 +147,20 @@ def test_cli_missing_data_dir_env_exits_with_message(cli_env, monkeypatch, argv)
     assert excinfo.value.code == "INTERVIEW_DATA_DIR is not set"
 
 
-def test_cli_commands_do_not_require_notes_dir_env(cli_env, monkeypatch, capsys):
-    """現行挙動: INTERVIEW_NOTES_DIR 未設定でも CLI は動作する。
-
-    SPEC は保存先を環境変数で与えると定めるが、現行の cli.py の
-    コマンド群は ``_notes_dir()`` を呼ばず、この変数を参照しない。
-    """
-    monkeypatch.delenv("INTERVIEW_NOTES_DIR")
+def test_cli_commands_do_not_require_notes_repo_env(cli_env, monkeypatch, capsys):
+    """publish-note 以外のコマンドは INTERVIEW_NOTES_REPO を参照しない。"""
+    monkeypatch.delenv("INTERVIEW_NOTES_REPO")
     assert _main(["register", SID, "--created-at", CREATED]) == 0
     assert _main(["status"]) == 0
     assert f"{SID} recorded" in capsys.readouterr().out
+
+
+def test_cli_publish_note_requires_notes_repo_env(cli_env, monkeypatch):
+    """INTERVIEW_NOTES_REPO 未設定の publish-note は SystemExit になる。"""
+    monkeypatch.delenv("INTERVIEW_NOTES_REPO")
+    with pytest.raises(SystemExit) as excinfo:
+        _main(["publish-note", SID])
+    assert excinfo.value.code == "INTERVIEW_NOTES_REPO is not set"
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +257,13 @@ def test_cli_mac_eligible_exit_codes_follow_eligibility(cli_env, capsys):
     assert capsys.readouterr().out.strip() == "not-eligible"
     store = SessionStore(data_dir / "state" / "sessions.json")
     store.transition(SID, State.FINAL_SAVED)
+    assert _main(["mac-eligible", SID]) == 1
+    assert capsys.readouterr().out.strip() == "not-eligible"
+    session = store.get(SID)
+    from datetime import datetime, timezone
+
+    session.note_published_at = datetime(2026, 11, 9, 10, 0, tzinfo=timezone.utc)
+    store.save()
     assert _main(["mac-eligible", SID]) == 0
     assert capsys.readouterr().out.strip() == "eligible"
 
@@ -256,6 +272,129 @@ def test_cli_mac_eligible_unknown_session_raises_key_error(cli_env):
     """未知セッションの mac-eligible は KeyError のまま伝播する。"""
     with pytest.raises(KeyError):
         _main(["mac-eligible", SID])
+
+
+# ---------------------------------------------------------------------------
+# save-note / publish-note
+# ---------------------------------------------------------------------------
+
+
+class _FakeGitHub:
+    """CLI テスト用の GitHub クライアント。"""
+
+    def __init__(self, visibility="private"):
+        self.info = {"visibility": visibility, "default_branch": "main"}
+        self.contents: dict[str, bytes] = {}
+
+    def repo_info(self, repo):
+        return self.info
+
+    def content_sha(self, repo, path):
+        from interview_pipeline.publish import git_blob_sha
+
+        data = self.contents.get(path)
+        return git_blob_sha(data) if data is not None else None
+
+    def put_content(self, repo, path, content, *, message, sha=None):
+        self.contents[path] = content
+        return True
+
+
+def _write_note(data_dir: Path, content="# 面談ノート（ダミー）\n本文。\n") -> Path:
+    note = data_dir / "work" / SID / "note.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(content, encoding="utf-8")
+    return note
+
+
+def _drive_to_awaiting_editing(data_dir: Path) -> None:
+    from datetime import datetime, timezone
+
+    from interview_pipeline.states import State
+    from interview_pipeline.store import SessionStore
+
+    store = SessionStore(data_dir / "state" / "sessions.json")
+    store.register(SID, datetime(2026, 11, 9, 9, 0, tzinfo=timezone.utc))
+    for step in (
+        "transfer_pending",
+        "transferring",
+        "received",
+        "processing",
+        "awaiting_editing",
+    ):
+        store.transition(SID, State(step))
+
+
+def test_cli_save_note_registers_draft_saved(cli_env, capsys):
+    """save-note は work の要約を登録し、draft_saved へ進める。"""
+    data_dir, _ = cli_env
+    _drive_to_awaiting_editing(data_dir)
+    note = _write_note(data_dir)
+
+    assert _main(["save-note", SID]) == 0
+    assert capsys.readouterr().out.strip() == f"saved {note}"
+    (entry,) = _sessions_payload(data_dir)
+    assert entry["state"] == "draft_saved"
+    assert entry["draft_saved_at"] is not None
+    assert note.exists()
+
+
+def test_cli_save_note_without_note_file_raises(cli_env, exc):
+    """要約ファイルが無い save-note は NoteContentError のまま伝播する。"""
+    data_dir, _ = cli_env
+    _drive_to_awaiting_editing(data_dir)
+
+    with pytest.raises(exc("NoteContentError")):
+        _main(["save-note", SID])
+
+
+def test_cli_publish_note_pushes_and_completes(cli_env, capsys, monkeypatch):
+    """publish-note は push 完了で URL を出し、ローカルの要約を消す。"""
+    import interview_pipeline.cli as cli_module
+
+    data_dir, _ = cli_env
+    _drive_to_awaiting_editing(data_dir)
+    note = _write_note(data_dir)
+    assert _main(["save-note", SID]) == 0
+    capsys.readouterr()
+    github = _FakeGitHub()
+    monkeypatch.setattr(cli_module, "_build_github_client", lambda: github)
+
+    assert _main(["publish-note", SID]) == 0
+    out = capsys.readouterr().out.strip()
+    assert out == (
+        "https://github.com/owner/notes-repo/blob/main/2026-11-09/" f"{SID}.md"
+    )
+    assert github.contents[f"2026-11-09/{SID}.md"]
+    assert not note.exists()
+    (entry,) = _sessions_payload(data_dir)
+    assert entry["state"] == "final_saved"
+    assert entry["note_published_at"] is not None
+
+
+def test_cli_publish_note_failure_keeps_note_and_logs_event(
+    cli_env, capsys, monkeypatch
+):
+    """push 先が公開リポジトリなら失敗し、要約は残り、イベントが残る。"""
+    import interview_pipeline.cli as cli_module
+
+    data_dir, _ = cli_env
+    _drive_to_awaiting_editing(data_dir)
+    note = _write_note(data_dir)
+    assert _main(["save-note", SID]) == 0
+    capsys.readouterr()
+    github = _FakeGitHub(visibility="public")
+    monkeypatch.setattr(cli_module, "_build_github_client", lambda: github)
+
+    assert _main(["publish-note", SID]) == 1
+    assert capsys.readouterr().out.strip() == "failed: note_publish_failed"
+    assert note.exists()
+    (entry,) = _sessions_payload(data_dir)
+    assert entry["state"] == "draft_saved"
+    assert entry["note_published_at"] is None
+    events = (data_dir / "log" / "events.jsonl").read_text(encoding="utf-8")
+    assert "note_publish_failed" in events
+    assert SID in events
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +493,7 @@ def _subprocess_env(data_dir: Path, notes_dir: Path) -> dict:
     src_dir = Path(interview_pipeline.__file__).resolve().parent.parent
     env = dict(os.environ)
     env["INTERVIEW_DATA_DIR"] = str(data_dir)
-    env["INTERVIEW_NOTES_DIR"] = str(notes_dir)
+    env["INTERVIEW_NOTES_REPO"] = "owner/notes-repo"
     pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = (
         f"{src_dir}{os.pathsep}{pythonpath}" if pythonpath else str(src_dir)

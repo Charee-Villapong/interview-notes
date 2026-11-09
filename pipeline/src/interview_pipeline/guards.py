@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
+import re
 import shutil
-import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
@@ -21,7 +21,7 @@ __all__ = [
     "DEFAULT_OVERDUE_DAYS",
     "DeletionGuardError",
     "assert_no_audio_files",
-    "check_note_storage",
+    "check_note_destination",
     "execute_vm_deletion",
     "find_audio_files",
     "find_overdue_unprocessed",
@@ -75,72 +75,27 @@ def assert_no_audio_files(paths: Iterable[Path | str]) -> None:
         )
 
 
-# ノート保存ガードの git 実行タイムアウト（秒）。確認が終わらない場合は
-# 「確認できない」として False に倒す（fail-closed）。
-_GIT_TIMEOUT_SECONDS = 10
+# push 先リポジトリ名の形式（``owner/repo``）。
+_REPO_PATTERN = re.compile(r"^[^/\s]+/[^/\s]+$")
 
 
-def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess | None:
-    """git を実行する。実行自体に失敗したら None（確認できない扱い）。"""
-    try:
-        return subprocess.run(
-            ["git", *args],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
+def check_note_destination(notes_repo: str, *, github) -> bool:
+    """push 先が非公開リポジトリであることを機械確認する。
 
-
-def check_note_storage(destination: Path | str) -> bool:
-    """保存先が「公開され得ない格納場所」であることを git で機械確認する。
-
-    次のすべてを満たすときだけ True を返す。1つでも満たさない・
-    確認できない場合は False（fail-closed）:
-
-    - 保存先パスが git 作業コピーの内側にある
-    - 保存先ファイルが ``git check-ignore`` で ignore 済みと判定される
-    - 格納フォルダ（保存先の2階層上）配下で追跡済みのファイルが
-      ``README.md`` のみである（``git ls-files`` で確認）
-
-    git が実行できない・作業コピーでない場合も確認できないため False。
-    保存先の日付フォルダは保存時に作られるため、未存在でも判定できる
-    （git コマンドは既存の祖先ディレクトリから実行する）。
+    ``github``（``repo_info(repo) -> dict | None`` を持つクライアント）
+    でリポジトリ情報を取得し、可視性が ``private`` のときだけ True。
+    形式が不正・取得できない・private でない場合は False
+    （fail-closed）。公開リポジトリへ要約を上げないためのガード。
     """
-    dest = Path(destination)
-    if shutil.which("git") is None:
+    if not isinstance(notes_repo, str) or not _REPO_PATTERN.match(notes_repo):
         return False
-
-    # git コマンドの実行起点として、保存先の最も近い既存の祖先を探す。
-    anchor = dest.parent
-    while not anchor.is_dir():
-        if anchor.parent == anchor:
-            return False
-        anchor = anchor.parent
-
-    top = _run_git(["rev-parse", "--show-toplevel"], anchor)
-    if top is None or top.returncode != 0:
+    try:
+        info = github.repo_info(notes_repo)
+    except Exception:
         return False
-    root = Path(top.stdout.strip()).resolve()
-
-    resolved = dest.resolve()
-    if root not in resolved.parents:
+    if not info:
         return False
-    rel = resolved.relative_to(root).as_posix()
-
-    ignored = _run_git(["check-ignore", "-q", "--", rel], root)
-    if ignored is None or ignored.returncode != 0:
-        return False
-
-    notes_rel = Path(rel).parent.parent.as_posix()
-    tracked = _run_git(["ls-files", "--full-name", "--", notes_rel], root)
-    if tracked is None or tracked.returncode != 0:
-        return False
-    entries = {line.strip() for line in tracked.stdout.splitlines() if line.strip()}
-    return entries <= {f"{notes_rel}/README.md"}
+    return str(info.get("visibility", "")).lower() == "private"
 
 
 def _state_name(session) -> str:
@@ -194,24 +149,25 @@ def execute_vm_deletion(store, session_id: str, inbox_dir: Path | str) -> Path:
 
 
 def mac_deletion_eligible(session) -> bool:
-    """``final_saved`` 以降の状態で、かつ ``needs_reprocess``
-    でないときだけ True。
+    """要約が非公開リポジトリへ push 済みのときだけ True。
 
-    正本 docs/状態管理.md「削除の条件」: 確定版が保存済み
-    （``final_saved`` 以降の状態）かつ未処理でないこと
+    正本 docs/状態管理.md「削除の条件」: 要約の push 完了
+    （``final_saved`` 以降の状態で、``note_published_at`` が
+    記録されていること）かつ未処理でないこと
     （``needs_reprocess`` でないこと）を満たす必要がある。
-    ``final_saved_at`` の記録の有無は条件ではない。期限
-    （最長7日）は削除の許可条件ではない（未処理は日数に
+    期限（最長7日）は削除の許可条件ではない（未処理は日数に
     関わらず消さない）。
     """
     state = _state_name(session)
     if state == State.NEEDS_REPROCESS.value:
         return False
-    return state in {
+    if state not in {
         State.FINAL_SAVED.value,
         State.DELETABLE.value,
         State.CLOSED.value,
-    }
+    }:
+        return False
+    return getattr(session, "note_published_at", None) is not None
 
 
 def find_overdue_unprocessed(

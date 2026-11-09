@@ -85,6 +85,7 @@ _EXCEPTION_SEARCH_MODULES = (
     "interview_pipeline.store",
     "interview_pipeline.receive",
     "interview_pipeline.guards",
+    "interview_pipeline.publish",
     "interview_pipeline.transcribe",
     "interview_pipeline.runner",
     "interview_pipeline.saving",

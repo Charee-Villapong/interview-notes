@@ -19,8 +19,8 @@ class DeletionGuardError(Exception):
     """削除条件を満たしていないため削除を拒否した。"""
 
 
-class NoteStorageGuardError(Exception):
-    """保存先が公開され得ない格納場所であることを確認できなかった（保存中止）。"""
+class NotePublishError(Exception):
+    """要約の push が完了しなかった（要約はローカルに保持される）。"""
 
 
 class NoteContentError(Exception):

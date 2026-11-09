@@ -153,17 +153,24 @@ def test_mac_eligible_with_plain_string_states(t0):
 
     assert (
         mac_deletion_eligible(
-            SimpleNamespace(final_saved_at=t0, state="needs_reprocess")
+            SimpleNamespace(note_published_at=t0, state="needs_reprocess")
         )
         is False
     )
     assert (
-        mac_deletion_eligible(SimpleNamespace(final_saved_at=t0, state="final_saved"))
+        mac_deletion_eligible(
+            SimpleNamespace(note_published_at=t0, state="final_saved")
+        )
         is True
     )
     assert (
-        mac_deletion_eligible(SimpleNamespace(final_saved_at=t0, state="deletable"))
+        mac_deletion_eligible(SimpleNamespace(note_published_at=t0, state="deletable"))
         is True
+    )
+    # push 記録が無ければ、final_saved 以降の状態でも False。
+    assert (
+        mac_deletion_eligible(SimpleNamespace(final_saved_at=t0, state="final_saved"))
+        is False
     )
 
 

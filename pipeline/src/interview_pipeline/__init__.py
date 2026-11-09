@@ -8,7 +8,7 @@ from interview_pipeline.errors import (
     EngineNotConfiguredError,
     InvalidTransitionError,
     NoteContentError,
-    NoteStorageGuardError,
+    NotePublishError,
 )
 from interview_pipeline.states import TRANSITIONS, State
 
@@ -18,7 +18,7 @@ __all__ = [
     "EngineNotConfiguredError",
     "InvalidTransitionError",
     "NoteContentError",
-    "NoteStorageGuardError",
+    "NotePublishError",
     "State",
     "TRANSITIONS",
 ]

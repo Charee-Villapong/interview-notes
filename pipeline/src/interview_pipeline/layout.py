@@ -12,6 +12,7 @@ __all__ = [
     "INBOX_DIRNAME",
     "LOG_DIRNAME",
     "MANIFEST_FILENAME",
+    "NOTE_FILENAME",
     "SESSIONS_FILENAME",
     "STAGING_DIRNAME",
     "STATE_DIRNAME",
@@ -22,6 +23,7 @@ __all__ = [
 # ファイル名
 MANIFEST_FILENAME = "manifest.json"
 TRANSCRIPT_FILENAME = "transcript.md"
+NOTE_FILENAME = "note.md"
 SESSIONS_FILENAME = "sessions.json"
 EVENTS_FILENAME = "events.jsonl"
 
