@@ -47,7 +47,7 @@
 - `AUDIO_VIDEO_EXTENSIONS: frozenset[str]`（値の正本は `../docs/状態管理.md`「保存ガードの拡張子リスト」）
 - `find_audio_files(paths) -> list[Path]` — 音声・動画拡張子（大文字小文字を区別しない）に一致するものを返す
 - `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（保存中止）
-- `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ GitHub への下書き保存確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
+- `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ 下書きの格納確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
 - `execute_vm_deletion(store, session_id, inbox_dir) -> Path` — 実行直前に `vm_copy_deletable` を再確認し、満たさなければ `DeletionGuardError`。満たせば inbox のセッションフォルダを削除し、`vm_copy_deleted_at` を記録する
 - `mac_deletion_eligible(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、確定版が保存済み（`final_saved` 以降）かつ未処理でないこと（`needs_reprocess` でないこと）を満たすときだけ True（期限（最長7日）は削除の許可条件ではない）
 - `find_overdue_unprocessed(store, now, days=7) -> list[Session]` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、録音から `days` を超え、`final_saved` 未到達のセッション（削除用ではなく可視化・再処理用）
@@ -72,9 +72,9 @@
 
 ### `saving.py`
 
-- `save_draft(store, session_id, draft_path, notes_dir, *, privacy_checker) -> Path`
+- `save_draft(store, session_id, draft_path, notes_dir, *, storage_checker) -> Path`
   - 保存前に `assert_no_audio_files` を通す。チェック対象は「この保存で配置する全ファイル」（現行APIではドラフト本体。配置先のファイル名は `<session_id>.md` 固定で、保存処理がドラフト以外を配置することはない）。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。第二の防壁（`.gitignore`）については、正本 `../docs/状態管理.md`「保存ガードの拡張子リスト」を参照
-  - `privacy_checker()` が False なら保存せず `RepositoryNotPrivateError` を送出する（保存先が非公開であることの確認）
+  - `storage_checker(destination)` が False なら保存せず `NoteStorageGuardError` を送出する（保存先が公開され得ない格納場所であることの確認。実チェッカーは `guards.check_note_storage`：保存先が git 作業コピー内にあり、`git check-ignore` で ignore 済みと判定され、格納フォルダの追跡ファイルが `README.md` のみであることを確認する。git が使えない等で確認できない場合も False＝保存しない）
   - 成功時は md を `notes_dir/<日付>/<session_id>.md` へ配置し（フォルダ・ファイル名の規則は正本 `../docs/状態管理.md`「セッション識別子」参照。下書き表記の検査は正本「下書き表記」のとおりとし、満たさなければ `DraftMarkingError`）、状態を `draft_saved` → `awaiting_review` へ進める
 
 ## CLI（`cli.py`）
@@ -89,7 +89,7 @@
 4. マニフェストの配置は `staging/<session_id>/manifest.json` とする（手順書にも明記）。
 5. `transferring` のセッションは、1回のランで検証→処理まで進めてよい（テストは両対応）。
 6. イベントログのキーは `date`／`session_id`／`state`／`error_kind` の4つに固定する。
-7. 例外型は専用モジュール `errors.py` に集約する（`InvalidTransitionError`、`AudioContentError`、`DeletionGuardError`、`RepositoryNotPrivateError`、`DraftMarkingError`、`EngineNotConfiguredError`）。
+7. 例外型は専用モジュール `errors.py` に集約する（`InvalidTransitionError`、`AudioContentError`、`DeletionGuardError`、`NoteStorageGuardError`、`DraftMarkingError`、`EngineNotConfiguredError`）。
 8. `register` の初期状態は `recorded`。
 9. `processing_completed` は `awaiting_editing` への遷移時に立てる。
 10. `SessionStore` はインスタンス化時に既存ファイルがあれば自動で読み込む。
