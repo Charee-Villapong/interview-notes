@@ -1,8 +1,6 @@
-# mac-app（Mac側ツール：完成形G の雛形）
+# mac-app（Mac側ツール）
 
-面談録音ツール（Mac 常駐のメニューバーツール）のソース雛形。計画と確定仕様は `docs/P3計画.md`、状態と削除条件の正本は `docs/状態管理.md`。
-
-**この雛形は未ビルド・未検証である。** Mac 上でのビルド・権限付与・実働テストは別段階とし、本人の画面で見える形で下記手順により行う。
+面談録音ツール（Mac 常駐のメニューバーツール）のソース。仕様と連携は `docs/P3計画.md`、状態と削除条件の正本は `docs/状態管理.md`、ビルドと配置の実働手順は `docs/P3実働手順.md`。
 
 ## 構成
 
@@ -23,11 +21,11 @@
 | `build.sh` | `.app` の組み立てと署名 |
 | `config.example.json` | ローカル設定の雛形（実値はここに書かない） |
 
-## ビルド手順（Mac 実働段階）
+## ビルド手順
 
 前提：Xcode（または Swift ツールチェイン）と、VM 側パイプラインが動作していること。
 
-1. **バンドル ID の確認（初回ビルド前に必須）**：バンドル ID は `com.nishikawa.interviewrecorder` で確定済み（2026-11-08 本人確定）。`Resources/Info.plist` の `CFBundleIdentifier` と `signing-requirement.txt` の識別子がこの値で一致していることを確認する。TCC の同一性はこの2つで決まるため、後から変更しない。
+1. **バンドル ID の確認（初回ビルド前に必須）**：バンドル ID は `com.nishikawa.interviewrecorder` で確定済み。`Resources/Info.plist` の `CFBundleIdentifier` と `signing-requirement.txt` の識別子がこの値で一致していることを確認する。TCC の同一性はこの2つで決まるため、後から変更しない。
 2. ビルドする：
    ```bash
    cd mac-app
@@ -40,7 +38,7 @@
 
 1. `config.example.json` を `~/Library/Application Support/InterviewRecorder/config.json` へコピーし、接続先エイリアスと VM 側のパスを実環境の値に書き換える。**実値入りの config.json をリポジトリに置かない。**
 2. SSH は既存の鍵認証と `~/.ssh/config` のエイリアスを使う前提。パスワード等は扱わない。
-3. `autoTransferEnabled` は **false** にする（転送は VM 側からのプルが正。本人の設計変更決定 2026-11-08、正本は `docs/状態管理.md`「転送方式（プル方式）」）。false の間、アプリは録音確定時に転送待ちの記録に留まり、自動プッシュのエラー表示・再試行を行わない。キーを置かない場合は有効（従来のプッシュ動作）として扱われるため、運用では必ず明示する。
+3. `autoTransferEnabled` は **false** にする（転送は VM 側からのプルが正。正本は `docs/状態管理.md`「転送方式（プル方式）」）。false の間、アプリは録音確定時に転送待ちの記録に留まり、自動プッシュのエラー表示・再試行を行わない。キーを置かない場合は有効（プッシュ動作）として扱われるため、運用では必ず明示する。
 
 ## 初回起動と権限付与（本人の手動操作）
 
