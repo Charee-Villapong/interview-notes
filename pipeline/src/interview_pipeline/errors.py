@@ -35,13 +35,5 @@ class UnclassifiedTrackError(Exception):
     """接頭辞で系統を分類できないファイルがセッション内に存在する。"""
 
 
-class GoogleGatewayError(Exception):
-    """Google へのアクセス（コネクタ経由）が失敗した。"""
-
-
-class GoogleConfigError(Exception):
-    """Google連携の設定が読み込めない・不正である。"""
-
-
 class MacFetchError(Exception):
     """Mac からの取得（転送プル）が失敗した。"""

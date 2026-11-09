@@ -10,7 +10,6 @@ from __future__ import annotations
 __all__ = [
     "EVENTS_FILENAME",
     "INBOX_DIRNAME",
-    "INTERVIEWS_FILENAME",
     "LOG_DIRNAME",
     "MANIFEST_FILENAME",
     "SESSIONS_FILENAME",
@@ -24,7 +23,6 @@ __all__ = [
 MANIFEST_FILENAME = "manifest.json"
 TRANSCRIPT_FILENAME = "transcript.md"
 SESSIONS_FILENAME = "sessions.json"
-INTERVIEWS_FILENAME = "interviews.json"
 EVENTS_FILENAME = "events.jsonl"
 
 # データ領域直下のサブディレクトリ名

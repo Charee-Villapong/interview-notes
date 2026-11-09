@@ -3,7 +3,7 @@
 方式の正本は docs/状態管理.md「転送方式（プル方式）」、契約は
 pipeline/SPEC.md「PULL 追加契約」。Mac へのアクセスは ``MacSource``
 プロトコルを通し、実接続は ``SshMacSource`` が担う（テストは
-フェイク実装で切り分ける。gateway.py の GoogleGateway と同じ流儀）。
+フェイク実装で切り分ける）。
 変えるのは「誰がファイルを運ぶか」だけで、受信検証は既存の
 ``verify_and_promote`` をそのまま使う。
 """

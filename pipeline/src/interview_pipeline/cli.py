@@ -12,25 +12,19 @@ STT のモデル名は ``INTERVIEW_STT_MODEL`` で受け取る（未設定なら
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from interview_pipeline.errors import MacFetchError
-from interview_pipeline.gateway import CliGoogleGateway
-from interview_pipeline.google_config import load_google_config
 from interview_pipeline.guards import (
     execute_vm_deletion,
     mac_deletion_eligible,
 )
-from interview_pipeline.interviews import InterviewRegistry, is_interview_event
 from interview_pipeline.layout import (
     EVENTS_FILENAME,
     INBOX_DIRNAME,
-    INTERVIEWS_FILENAME,
     LOG_DIRNAME,
     MANIFEST_FILENAME,
     SESSIONS_FILENAME,
@@ -41,11 +35,9 @@ from interview_pipeline.layout import (
 from interview_pipeline.manifest import Manifest
 from interview_pipeline.pull import SshMacSource, pull_pending
 from interview_pipeline.receive import verify_and_promote
-from interview_pipeline.reminders import due_reminders, mark_reminded
 from interview_pipeline.runner import EventLog, run_once
 from interview_pipeline.states import State
 from interview_pipeline.store import SessionStore
-from interview_pipeline.sync import detection_window, sync_interviews
 from interview_pipeline.transcribe import (
     FasterWhisperTranscriber,
     UnavailableTranscriber,
@@ -68,18 +60,6 @@ def _notes_dir() -> Path:
 
 def _store(data_dir: Path) -> SessionStore:
     return SessionStore(data_dir / STATE_DIRNAME / SESSIONS_FILENAME)
-
-
-def _google_config():
-    value = os.environ.get("INTERVIEW_GOOGLE_CONFIG")
-    if not value:
-        raise SystemExit("INTERVIEW_GOOGLE_CONFIG is not set")
-    return load_google_config(value)
-
-
-def _build_gateway(config):
-    """ゲートウェイ生成の集約点（テストでの差し替え点。SPEC P2契約）。"""
-    return CliGoogleGateway(config)
 
 
 def _build_transcriber():
@@ -109,21 +89,6 @@ def _build_mac_source():
     if not app_dir:
         raise SystemExit("INTERVIEW_MAC_APP_DIR is not set")
     return SshMacSource(ssh_command, app_dir)
-
-
-def _registry(data_dir: Path) -> InterviewRegistry:
-    return InterviewRegistry(data_dir / STATE_DIRNAME / INTERVIEWS_FILENAME)
-
-
-def _now_for_mark() -> datetime:
-    """送信済み記録用の現在時刻（設定タイムゾーン優先、無ければ UTC）。"""
-    value = os.environ.get("INTERVIEW_GOOGLE_CONFIG")
-    if value:
-        try:
-            return datetime.now(ZoneInfo(load_google_config(value).timezone))
-        except Exception:
-            pass
-    return datetime.now(timezone.utc)
 
 
 def _parse_datetime(value: str | None) -> datetime:
@@ -160,20 +125,6 @@ def main(argv: list[str] | None = None) -> int:
 
     p_mac = subparsers.add_parser("mac-eligible")
     p_mac.add_argument("session_id")
-
-    subparsers.add_parser("detect")
-
-    subparsers.add_parser("sync")
-
-    subparsers.add_parser("interviews")
-
-    p_check = subparsers.add_parser("remind-check")
-    p_check.add_argument("--slot", choices=["morning", "evening"], required=True)
-    p_check.add_argument("--dry-run", action="store_true")
-
-    p_mark = subparsers.add_parser("remind-mark")
-    p_mark.add_argument("event_id")
-    p_mark.add_argument("kind")
 
     args = parser.parse_args(argv)
     data_dir = _data_dir()
@@ -248,84 +199,6 @@ def main(argv: list[str] | None = None) -> int:
         eligible = mac_deletion_eligible(session)
         print("eligible" if eligible else "not-eligible")
         return 0 if eligible else 1
-
-    if args.command == "detect":
-        config = _google_config()
-        gateway = _build_gateway(config)
-        now = datetime.now(ZoneInfo(config.timezone))
-        time_min, time_max = detection_window(config, now)
-        for calendar_id in config.calendar_ids:
-            for event in gateway.list_events(calendar_id, time_min, time_max):
-                basis = is_interview_event(event, config)
-                if basis is not None:
-                    print(
-                        f"{event.start.date().isoformat()} {basis} "
-                        f"{event.event_id} {event.title}"
-                    )
-        return 0
-
-    if args.command == "sync":
-        config = _google_config()
-        gateway = _build_gateway(config)
-        now = datetime.now(ZoneInfo(config.timezone))
-        report = sync_interviews(
-            _registry(data_dir),
-            gateway,
-            config,
-            store=store,
-            now=now,
-            event_log=EventLog(data_dir / LOG_DIRNAME / EVENTS_FILENAME),
-        )
-        print(
-            f"detected={report.detected} notes_created={report.notes_created} "
-            f"failed={report.failed}"
-        )
-        return 0 if not report.failed else 1
-
-    if args.command == "interviews":
-        for record in _registry(data_dir).all():
-            note = "ok" if record.docs_doc_id else "pending"
-            print(f"{record.session_id} {record.date} note={note}")
-        return 0
-
-    if args.command == "remind-check":
-        config = _google_config()
-        gateway = _build_gateway(config)
-        registry = _registry(data_dir)
-        now = datetime.now(ZoneInfo(config.timezone))
-        tomorrow = (now.date() + timedelta(days=1)).isoformat()
-        note_texts: dict[str, str] = {}
-        for record in registry.all():
-            if record.date == tomorrow and record.docs_doc_id:
-                try:
-                    note_texts[record.event_id] = gateway.read_note_text(
-                        record.docs_doc_id
-                    )
-                except Exception:
-                    note_texts[record.event_id] = ""
-        due = due_reminders(registry, now, args.slot, note_texts=note_texts)
-        print(
-            json.dumps(
-                [
-                    {
-                        "event_id": item.event_id,
-                        "session_id": item.session_id,
-                        "kind": item.kind,
-                        "text": item.text,
-                    }
-                    for item in due
-                ],
-                ensure_ascii=False,
-            )
-        )
-        return 0
-
-    if args.command == "remind-mark":
-        record = mark_reminded(
-            _registry(data_dir), args.event_id, args.kind, _now_for_mark()
-        )
-        print(f"marked {record.event_id} {args.kind}")
-        return 0
 
     parser.print_help()
     return 2
