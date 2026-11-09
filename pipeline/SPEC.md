@@ -152,6 +152,7 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
   - 面談日が当日かつ `slot == "morning"`：`day_morning`
   - 面談日が当日かつ `slot == "evening"`：`day_evening`
   - いずれでもない場合は空（何も送らない）
+- 仕様変更（2026-11-09、本人の判断）：振り返りリマインド（`day_evening`）は廃止。コードの判定は従来どおり `day_evening` を返すが、定期実行（夕チェック cron）では配信せず、`remind-mark` もしない。実際に配信する種別は `eve` と `day_morning` のみとする
 - `unfilled_sections(note_text) -> list[str]` — テンプレートの準備セクション（企業研究・想定問答・聞きたいこと）のうち、本文が空または「（未記入）」のままのものを返す
 - `mark_reminded(registry, event_id, kind, at)` — 送信済みを記録する（`remind-check` では記録せず、送信後に `remind-mark` で記録する二段構え）
 - `Reminder` — `event_id`、`session_id`、`kind`、`text`（定型文で生成した通知文）
