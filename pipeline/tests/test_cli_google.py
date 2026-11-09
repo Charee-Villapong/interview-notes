@@ -44,12 +44,6 @@ class FakeGateway:
     def read_note_text(self, doc_id):
         return self.note_text
 
-    def append_sheet_row(self, spreadsheet_id, tab, values):
-        return 1
-
-    def sheet_row_exists(self, spreadsheet_id, tab, session_id):
-        return False
-
 
 @pytest.fixture
 def cli_env(tmp_path, monkeypatch):
@@ -63,8 +57,6 @@ def cli_env(tmp_path, monkeypatch):
         "primary_keyword": "面接",
         "secondary_keywords": ["面談"],
         "invited_keywords": ["面接", "面談"],
-        "sheets_spreadsheet_id": "dummy-spreadsheet-id",
-        "sheets_tab": "面談一覧",
         "docs_template_id": "dummy-template-id",
         "window_past_days": 7,
         "window_future_days": 30,
@@ -97,9 +89,7 @@ def _seed_today_record(data_dir):
             meeting_url="https://meet.google.com/dummy-example",
             docs_doc_id="dummy-doc-1",
             docs_url="https://example.com/docs/dummy-doc-1",
-            sheet_row=1,
             note_error=None,
-            sheet_error=None,
             reminders={},
             created_at=start,
             updated_at=start,

@@ -26,8 +26,6 @@ FULL_CONFIG = {
     "primary_keyword": "面接",
     "secondary_keywords": ["面談"],
     "invited_keywords": ["面接", "面談"],
-    "sheets_spreadsheet_id": "dummy-spreadsheet-id",
-    "sheets_tab": "面談一覧",
     "docs_template_id": "dummy-template-id",
     "docs_folder_id": "dummy-folder-id",
     "window_past_days": 7,
@@ -57,8 +55,6 @@ def test_load_google_config_reads_all_keys(tmp_path):
     assert config.primary_keyword == "面接"
     assert list(config.secondary_keywords) == ["面談"]
     assert list(config.invited_keywords) == ["面接", "面談"]
-    assert config.sheets_spreadsheet_id == "dummy-spreadsheet-id"
-    assert config.sheets_tab == "面談一覧"
     assert config.docs_template_id == "dummy-template-id"
     assert config.docs_folder_id == "dummy-folder-id"
     assert config.window_past_days == 7
@@ -73,7 +69,6 @@ def test_load_google_config_completes_defaults(tmp_path):
     ウィンドウの日数の具体値は仕様に無いため、整数で補われることだけを見る。
     """
     minimal = {
-        "sheets_spreadsheet_id": "dummy-spreadsheet-id",
         "docs_template_id": "dummy-template-id",
     }
     config = _load(tmp_path, minimal)

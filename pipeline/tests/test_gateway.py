@@ -46,7 +46,6 @@ def _config_with_cli_path(tmp_path, cli_path: str):
     data = {
         "cli_path": cli_path,
         "calendar_ids": ["dummy-calendar-1"],
-        "sheets_spreadsheet_id": "dummy-spreadsheet-id",
         "docs_template_id": "dummy-template-id",
     }
     path = tmp_path / "google_config.json"
@@ -96,8 +95,6 @@ def test_cli_gateway_exposes_protocol_methods(tmp_path):
         "copy_template",
         "replace_note_fields",
         "read_note_text",
-        "append_sheet_row",
-        "sheet_row_exists",
     ):
         assert callable(getattr(gateway, name)), name
 
@@ -117,7 +114,7 @@ def test_cli_gateway_list_events_failure_raises_gateway_error(tmp_path):
         )
 
 
-def test_cli_gateway_append_failure_raises_gateway_error(tmp_path):
+def test_cli_gateway_copy_failure_raises_gateway_error(tmp_path):
     """書き込み系の失敗も GoogleGatewayError で送出される。"""
     from interview_pipeline.gateway import CliGoogleGateway
 
@@ -125,8 +122,4 @@ def test_cli_gateway_append_failure_raises_gateway_error(tmp_path):
         _config_with_cli_path(tmp_path, "/nonexistent/dummy-cli-path")
     )
     with pytest.raises(_gateway_error_type()):
-        gateway.append_sheet_row(
-            "dummy-spreadsheet-id",
-            "面談一覧",
-            ["2026-11-10", "ダミー社", "", "", "", "https://example.com/dummy"],
-        )
+        gateway.copy_template("dummy-template-id", "2026-11-10_01 面談ノート")

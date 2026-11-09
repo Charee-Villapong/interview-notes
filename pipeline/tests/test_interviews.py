@@ -34,8 +34,6 @@ def _config(tmp_path, **overrides):
         "primary_keyword": "面接",
         "secondary_keywords": ["面談"],
         "invited_keywords": ["面接", "面談"],
-        "sheets_spreadsheet_id": "dummy-spreadsheet-id",
-        "sheets_tab": "面談一覧",
         "docs_template_id": "dummy-template-id",
         "window_past_days": 7,
         "window_future_days": 30,
@@ -81,9 +79,7 @@ def _record(**overrides):
         "meeting_url": "https://meet.google.com/dummy-example",
         "docs_doc_id": "dummy-doc-1",
         "docs_url": "https://example.com/docs/dummy-doc-1",
-        "sheet_row": 1,
         "note_error": None,
-        "sheet_error": None,
         "reminders": {},
         "created_at": CREATED,
         "updated_at": CREATED,
@@ -135,7 +131,6 @@ def test_registry_persists_across_reload(tmp_path):
     registry = _registry(tmp_path, "persist.json")
     registry.upsert(
         _record(
-            sheet_row=3,
             note_error=None,
             reminders={"eve": "2026-11-09T09:00:00+09:00"},
         )
@@ -154,7 +149,6 @@ def test_registry_persists_across_reload(tmp_path):
     assert record.session_id == "2026-11-10_01"
     assert record.date == DAY
     assert record.company == "ダミー社"
-    assert record.sheet_row == 3
     assert record.note_error is None
     assert record.reminders == {"eve": "2026-11-09T09:00:00+09:00"}
 
