@@ -25,6 +25,12 @@ __pycache__/
 *.mp4
 *.webm
 
+# 面談ノートの実ファイルは格納フォルダごと ignore する
+# （リポジトリが公開されていても GitHub へ上がらない形にする。
+#  追跡対象は notes/README.md のみ。保存時は保存ガードが ignore 状態を機械確認する）
+notes/*
+!notes/README.md
+
 # 実行時データ（状態・音声・ステージング）はリポジトリ外のデータ領域に置く
 data/
 *.sqlite3
