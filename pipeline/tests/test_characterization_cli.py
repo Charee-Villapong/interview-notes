@@ -17,7 +17,7 @@ stdout・receive の成功／失敗・run のログ配置を固定済み。
 - ``--created-at`` の解釈（省略時は現在時刻 UTC、naive は UTC 補完、
   aware はオフセット保持、日付のみは 00:00 UTC、不正値は ValueError）
 - register の冪等性、status の空／複数件出力
-- mark-final / delete-vm-copy / mac-eligible の成功・拒否・終了コード
+- delete-vm-copy / mac-eligible の成功・拒否・終了コード
 - receive のマニフェスト欠落・未知セッション時の例外
 - run の空ストア／対象外セッション時の出力文字列
 """
@@ -70,14 +70,22 @@ def _drive_cli_store(data_dir: Path, target: str) -> None:
     from interview_pipeline.store import SessionStore
 
     paths = {
-        "awaiting_review": [
+        "draft_saved": [
             "transfer_pending",
             "transferring",
             "received",
             "processing",
             "awaiting_editing",
             "draft_saved",
-            "awaiting_review",
+        ],
+        "final_saved": [
+            "transfer_pending",
+            "transferring",
+            "received",
+            "processing",
+            "awaiting_editing",
+            "draft_saved",
+            "final_saved",
         ],
     }
     store = SessionStore(data_dir / "state" / "sessions.json")
@@ -119,7 +127,6 @@ def test_cli_missing_session_argument_exits_with_code_2(cli_env):
         ["receive", SID],
         ["run"],
         ["status"],
-        ["mark-final", SID],
         ["delete-vm-copy", SID],
         ["mac-eligible", SID],
     ],
@@ -226,59 +233,21 @@ def test_cli_status_lists_sessions_in_registration_order(cli_env, capsys):
 
 
 # ---------------------------------------------------------------------------
-# mark-final
-# ---------------------------------------------------------------------------
-
-
-def test_cli_mark_final_advances_awaiting_review(cli_env, capsys):
-    """awaiting_review から mark-final で final_saved になり記録される。"""
-    data_dir, _ = cli_env
-    _drive_cli_store(data_dir, "awaiting_review")
-    assert _main(["mark-final", SID]) == 0
-    assert capsys.readouterr().out.strip() == f"{SID} final_saved"
-    (entry,) = _sessions_payload(data_dir)
-    assert entry["state"] == "final_saved"
-    assert entry["final_saved_at"] is not None
-
-
-def test_cli_mark_final_from_recorded_is_rejected(cli_env, exc):
-    """遷移表にない状態からの mark-final は例外で拒否され状態不変。"""
-    data_dir, _ = cli_env
-    _main(["register", SID, "--created-at", CREATED])
-    with pytest.raises(exc("InvalidTransitionError")):
-        _main(["mark-final", SID])
-    (entry,) = _sessions_payload(data_dir)
-    assert entry["state"] == "recorded"
-
-
-def test_cli_mark_final_twice_is_rejected(cli_env, exc):
-    """final_saved への再 mark-final（自己遷移）も拒否される。"""
-    data_dir, _ = cli_env
-    _drive_cli_store(data_dir, "awaiting_review")
-    assert _main(["mark-final", SID]) == 0
-    with pytest.raises(exc("InvalidTransitionError")):
-        _main(["mark-final", SID])
-
-
-def test_cli_mark_final_unknown_session_raises_key_error(cli_env):
-    """未知セッションの mark-final は KeyError のまま伝播する。"""
-    with pytest.raises(KeyError):
-        _main(["mark-final", SID])
-
-
-# ---------------------------------------------------------------------------
 # mac-eligible
 # ---------------------------------------------------------------------------
 
 
 def test_cli_mac_eligible_exit_codes_follow_eligibility(cli_env, capsys):
     """mac-eligible は eligible で 0 / not-eligible で 1 を返す。"""
+    from interview_pipeline.states import State
+    from interview_pipeline.store import SessionStore
+
     data_dir, _ = cli_env
-    _drive_cli_store(data_dir, "awaiting_review")
+    _drive_cli_store(data_dir, "draft_saved")
     assert _main(["mac-eligible", SID]) == 1
     assert capsys.readouterr().out.strip() == "not-eligible"
-    assert _main(["mark-final", SID]) == 0
-    capsys.readouterr()
+    store = SessionStore(data_dir / "state" / "sessions.json")
+    store.transition(SID, State.FINAL_SAVED)
     assert _main(["mac-eligible", SID]) == 0
     assert capsys.readouterr().out.strip() == "eligible"
 
@@ -297,7 +266,7 @@ def test_cli_mac_eligible_unknown_session_raises_key_error(cli_env):
 def test_cli_delete_vm_copy_removes_folder_and_reports_path(cli_env, capsys):
     """削除可なら inbox のセッションフォルダが消え、パスが出力される。"""
     data_dir, _ = cli_env
-    _drive_cli_store(data_dir, "awaiting_review")
+    _drive_cli_store(data_dir, "draft_saved")
     target = data_dir / "inbox" / SID
     target.mkdir(parents=True)
     (target / "system_track.m4a").write_bytes(b"dummy")
@@ -326,7 +295,7 @@ def test_cli_delete_vm_copy_refused_when_guard_not_satisfied(cli_env, exc):
 def test_cli_delete_vm_copy_second_run_still_succeeds(cli_env, capsys):
     """現行挙動: 削除済み（対象フォルダ無し）でも再実行は正常終了する。"""
     data_dir, _ = cli_env
-    _drive_cli_store(data_dir, "awaiting_review")
+    _drive_cli_store(data_dir, "draft_saved")
     assert _main(["delete-vm-copy", SID]) == 0
     capsys.readouterr()
     assert _main(["delete-vm-copy", SID]) == 0

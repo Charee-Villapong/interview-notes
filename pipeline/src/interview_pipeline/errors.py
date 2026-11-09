@@ -23,8 +23,8 @@ class NoteStorageGuardError(Exception):
     """保存先が公開され得ない格納場所であることを確認できなかった（保存中止）。"""
 
 
-class DraftMarkingError(Exception):
-    """自動生成 md の冒頭に「下書き（未照合）」表記がない。"""
+class NoteContentError(Exception):
+    """要約ファイルが無い、または空である（登録中止）。"""
 
 
 class EngineNotConfiguredError(Exception):

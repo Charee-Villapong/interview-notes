@@ -36,7 +36,6 @@ from interview_pipeline.manifest import Manifest
 from interview_pipeline.pull import SshMacSource, pull_pending
 from interview_pipeline.receive import verify_and_promote
 from interview_pipeline.runner import EventLog, run_once
-from interview_pipeline.states import State
 from interview_pipeline.store import SessionStore
 from interview_pipeline.transcribe import (
     FasterWhisperTranscriber,
@@ -117,9 +116,6 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser("status")
 
-    p_final = subparsers.add_parser("mark-final")
-    p_final.add_argument("session_id")
-
     p_delete = subparsers.add_parser("delete-vm-copy")
     p_delete.add_argument("session_id")
 
@@ -182,11 +178,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         for session in store.all():
             print(f"{session.session_id} {session.state.value}")
-        return 0
-
-    if args.command == "mark-final":
-        store.transition(args.session_id, State.FINAL_SAVED)
-        print(f"{args.session_id} final_saved")
         return 0
 
     if args.command == "delete-vm-copy":

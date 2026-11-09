@@ -18,7 +18,6 @@ EXPECTED_STATES = {
     "processing",
     "awaiting_editing",
     "draft_saved",
-    "awaiting_review",
     "final_saved",
     "deletable",
     "closed",
@@ -36,9 +35,8 @@ ALLOWED_TRANSITIONS = [
     ("processing", "needs_reprocess"),
     ("awaiting_editing", "draft_saved"),
     ("awaiting_editing", "needs_reprocess"),
-    ("draft_saved", "awaiting_review"),
-    ("awaiting_review", "final_saved"),
-    ("awaiting_review", "needs_reprocess"),
+    ("draft_saved", "final_saved"),
+    ("draft_saved", "needs_reprocess"),
     ("final_saved", "deletable"),
     ("deletable", "closed"),
 ]
@@ -50,7 +48,6 @@ INVALID_TRANSITIONS = [
     ("recorded", "processing"),
     ("recorded", "awaiting_editing"),
     ("recorded", "draft_saved"),
-    ("recorded", "awaiting_review"),
     ("recorded", "final_saved"),
     ("recorded", "deletable"),
     ("recorded", "closed"),
@@ -72,20 +69,13 @@ INVALID_TRANSITIONS = [
     ("received", "closed"),
     ("processing", "received"),
     ("processing", "draft_saved"),
-    ("processing", "awaiting_review"),
     ("processing", "final_saved"),
     ("awaiting_editing", "processing"),
-    ("awaiting_editing", "awaiting_review"),
     ("awaiting_editing", "final_saved"),
     ("draft_saved", "awaiting_editing"),
-    ("draft_saved", "final_saved"),
-    ("awaiting_review", "draft_saved"),
-    ("awaiting_review", "deletable"),
-    ("awaiting_review", "closed"),
-    ("final_saved", "awaiting_review"),
+    ("draft_saved", "deletable"),
     ("final_saved", "closed"),
     ("deletable", "final_saved"),
-    ("deletable", "awaiting_review"),
     ("closed", "recorded"),
     ("closed", "transfer_pending"),
     ("closed", "deletable"),
@@ -93,7 +83,7 @@ INVALID_TRANSITIONS = [
 
 
 def test_state_enum_matches_state_table(state_of, state_name):
-    """State は状態一覧の12状態ちょうどを持つ。"""
+    """State は状態一覧の11状態ちょうどを持つ。"""
     from interview_pipeline.states import State
 
     actual = {state_name(member) for member in State}
@@ -151,7 +141,6 @@ def test_invalid_transitions_rejected(state_of, exc, src_name, dst_name):
         "processing",
         "awaiting_editing",
         "draft_saved",
-        "awaiting_review",
         "final_saved",
         "deletable",
     ],

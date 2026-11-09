@@ -45,7 +45,6 @@ PRE_FINAL_STATES = [
     "processing",
     "awaiting_editing",
     "draft_saved",
-    "awaiting_review",
 ]
 
 
@@ -204,7 +203,7 @@ def test_mac_not_eligible_for_old_session_before_final_saved_with_timestamp(
     from interview_pipeline.guards import mac_deletion_eligible
 
     old = t0 - timedelta(days=30)
-    store = _store_at_state(make_store, drive_to, t0, "awaiting_review", created_at=old)
+    store = _store_at_state(make_store, drive_to, t0, "draft_saved", created_at=old)
     session = _set_final_saved_at(store, t0)
     assert session.final_saved_at is not None
     assert mac_deletion_eligible(session) is False

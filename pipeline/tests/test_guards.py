@@ -156,7 +156,7 @@ def test_vm_copy_deletable_only_when_completed_and_draft_saved(
     from interview_pipeline.guards import vm_copy_deletable
 
     store, session = _session(make_store, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     session = store.get(SID)
     session.processing_completed = True
     store.save()
@@ -200,7 +200,7 @@ def test_execute_vm_deletion_removes_folder_and_records_timestamp(
     from interview_pipeline.guards import execute_vm_deletion
 
     store, _ = _session(make_store, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     session = store.get(SID)
     session.processing_completed = True
     store.save()
@@ -280,7 +280,7 @@ def test_mac_not_eligible_before_final_saved(make_store, drive_to, t0):
     from interview_pipeline.guards import mac_deletion_eligible
 
     store, _ = _session(make_store, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     assert mac_deletion_eligible(store.get(SID)) is False
 
 

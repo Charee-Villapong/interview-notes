@@ -254,11 +254,11 @@ def test_run_leaves_unprocessable_states_untouched(
     t0,
     tmp_path,
 ):
-    """処理対象外の状態（recorded / awaiting_review 等）は変化しない。"""
+    """処理対象外の状態（recorded / final_saved 等）は変化しない。"""
     store = make_store()
     store.register(SID, t0)  # recorded のまま
     store.register(SID2, t0)
-    drive_to(store, SID2, "awaiting_review")
+    drive_to(store, SID2, "final_saved")
     roots = _roots(tmp_path)
 
     report = _run(
@@ -266,7 +266,7 @@ def test_run_leaves_unprocessable_states_untouched(
     )
 
     assert state_name(store.get(SID).state) == "recorded"
-    assert state_name(store.get(SID2).state) == "awaiting_review"
+    assert state_name(store.get(SID2).state) == "final_saved"
     assert SID not in report.processed
     assert SID2 not in report.processed
     assert SID in report.skipped or SID not in report.failed

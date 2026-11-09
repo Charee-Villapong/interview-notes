@@ -367,7 +367,6 @@ def test_pull_ignores_non_target_mac_states(make_store, make_event_log, tmp_path
         "processing",
         "awaiting_editing",
         "draft_saved",
-        "awaiting_review",
         "final_saved",
         "deletable",
         "closed",

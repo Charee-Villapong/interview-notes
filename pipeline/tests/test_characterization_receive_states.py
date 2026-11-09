@@ -124,7 +124,6 @@ def test_receive_failure_from_recorded(make_store, filekit, state_name, t0, tmp_
         "processing",
         "awaiting_editing",
         "draft_saved",
-        "awaiting_review",
         "final_saved",
         "deletable",
         "closed",

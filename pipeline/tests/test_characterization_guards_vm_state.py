@@ -40,7 +40,6 @@ PRE_DRAFT_STATES = [
 #: 「draft_saved 以降」の状態（docs/状態管理.md「削除の条件」）。
 POST_DRAFT_STATES = [
     "draft_saved",
-    "awaiting_review",
     "final_saved",
     "deletable",
     "closed",

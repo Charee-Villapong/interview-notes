@@ -1,71 +1,38 @@
-"""下書き保存（保存ガード付き）。
+"""要約の登録（push 待ちへの遷移）。
 
-保存前に音声非含有チェックと保存先の格納ガード確認を必須とする。
-格納ガードは、保存先が公開され得ない格納場所（作業コピー内にあり、
-gitignore 済みで、格納フォルダの追跡ファイルが README.md のみ）で
-あることを、呼び出し側が渡す ``storage_checker`` で確認する。
-自動生成 md は冒頭に「下書き（未照合）」を含むこと。
-成功時は ``draft_saved`` → ``awaiting_review`` へ進める。
+生成済みの要約 md を「push 待ち」として登録し、状態を ``draft_saved``
+へ進める。要約の実体は作業領域に一時保持し、非公開リポジトリへの
+push は ``publish`` 側が担う。push 成功が確認できるまでは、ローカル
+コピーを削除しない。
+
+登録前に音声非含有チェックを必須とする。音声だった場合は
+``needs_reprocess``（resume: ``awaiting_editing``）にして送出する。
+要約ファイルが無い・空の場合は ``NoteContentError`` を送出し、
+状態は変えない。
 """
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
-from typing import Callable
 
-from interview_pipeline.errors import (
-    AudioContentError,
-    DraftMarkingError,
-    NoteStorageGuardError,
-)
+from interview_pipeline.errors import AudioContentError, NoteContentError
 from interview_pipeline.guards import assert_no_audio_files
 from interview_pipeline.states import ERROR_KIND_AUDIO_CONTENT_DETECTED, State
 from interview_pipeline.store import update_needs_reprocess_info
 
 __all__ = [
     "AudioContentError",
-    "DraftMarkingError",
-    "NoteStorageGuardError",
-    "save_draft",
+    "NoteContentError",
+    "save_note",
 ]
 
-DRAFT_MARKING = "下書き（未照合）"
 
-# セッションIDの区切り文字。ID は ``<面談日付>_<連番>`` 形式
-# （例: ``2026-11-09_01``、正本 docs/状態管理.md「セッション識別子」）で、
-# 日付部分はこの区切りの先頭要素になる。
-_SESSION_ID_SEPARATOR = "_"
-
-
-def _session_date_part(session, session_id: str) -> str:
-    """保存先フォルダの日付部分を決める。
-
-    通常は ``created_at`` の日付を使う。``created_at`` が無い場合に限り、
-    セッションIDが ``<面談日付>_<連番>`` 形式である前提で、その日付
-    部分にフォールバックする（ID 形式が変わるとこの前提も見直すこと）。
-    """
-    created_at = getattr(session, "created_at", None)
-    if created_at is not None and hasattr(created_at, "date"):
-        return created_at.date().isoformat()
-    return session_id.split(_SESSION_ID_SEPARATOR)[0]
-
-
-def save_draft(
-    store,
-    session_id: str,
-    draft_path: Path | str,
-    notes_dir: Path | str,
-    *,
-    storage_checker: Callable[[Path], bool],
-) -> Path:
-    draft = Path(draft_path)
-    notes = Path(notes_dir)
-    session = store.get(session_id)
+def save_note(store, session_id: str, note_path: Path | str) -> Path:
+    note = Path(note_path)
 
     # 1. 音声・動画の非含有チェック（失敗時は needs_reprocess にする）。
     try:
-        assert_no_audio_files([draft])
+        assert_no_audio_files([note])
     except AudioContentError:
         # 現在状態から needs_reprocess へ移せる場合のみ遷移する。
         try:
@@ -87,31 +54,13 @@ def save_draft(
                 store.save()
         raise
 
-    # 2. 配置先を決める: notes_dir/<日付>/<session_id>.md
-    date_part = _session_date_part(session, session_id)
-    destination_dir = notes / date_part
-    destination = destination_dir / f"{session_id}.md"
+    # 2. 要約ファイルの存在と中身の確認（無い・空なら登録しない）。
+    content = note.read_text(encoding="utf-8") if note.is_file() else ""
+    if not content.strip():
+        raise NoteContentError("note file is missing or empty")
 
-    # 3. 保存先が公開され得ない格納場所であることの確認（格納ガード）。
-    if not storage_checker(destination):
-        raise NoteStorageGuardError(
-            "note destination is not confirmed as unpublished storage"
-        )
-
-    # 4. 下書き表記の検査（冒頭にあること）。
-    content = draft.read_text(encoding="utf-8") if draft.is_file() else ""
-    stripped = content.lstrip()
-    first_line = stripped.splitlines()[0] if stripped.splitlines() else ""
-    if DRAFT_MARKING not in first_line:
-        raise DraftMarkingError("draft must start with the draft marking")
-
-    # 5. 配置する。
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(draft, destination)
-
-    # 6. 状態を draft_saved → awaiting_review へ進める。
+    # 3. 状態を draft_saved へ進める（push 待ち）。
     current_state = store.get(session_id).state
     if current_state is not State.DRAFT_SAVED:
         store.transition(session_id, State.DRAFT_SAVED)
-    store.transition(session_id, State.AWAITING_REVIEW)
-    return destination
+    return note

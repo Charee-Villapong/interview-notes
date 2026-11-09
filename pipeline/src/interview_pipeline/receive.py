@@ -31,7 +31,6 @@ _ALREADY_RECEIVED_OR_LATER = {
     State.PROCESSING,
     State.AWAITING_EDITING,
     State.DRAFT_SAVED,
-    State.AWAITING_REVIEW,
     State.FINAL_SAVED,
     State.DELETABLE,
     State.CLOSED,

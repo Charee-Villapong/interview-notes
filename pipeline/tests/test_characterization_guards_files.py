@@ -35,7 +35,7 @@ def _deletable_store(make_store, drive_to, t0):
     # 正本の削除条件（処理完了＋draft_saved 以降＋draft_saved_at）を満たす。
     store = make_store()
     store.register(SID, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     session = store.get(SID)
     session.processing_completed = True
     session.draft_saved_at = t0
@@ -88,7 +88,7 @@ def test_execute_vm_deletion_returns_session_path(make_store, drive_to, t0, tmp_
 
     store = make_store()
     store.register(SID, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     inbox_root = tmp_path / "inbox"
     (inbox_root / SID).mkdir(parents=True)
 

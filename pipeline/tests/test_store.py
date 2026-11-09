@@ -106,7 +106,7 @@ def test_transition_to_final_saved_records_timestamp(
     """final_saved へ進むとき final_saved_at が自動で記録される。"""
     store = make_store()
     store.register(SID, t0)
-    drive_to(store, SID, "awaiting_review")
+    drive_to(store, SID, "draft_saved")
     assert store.get(SID).final_saved_at is None
 
     drive_to(store, SID, "final_saved")

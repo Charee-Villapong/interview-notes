@@ -49,7 +49,6 @@ class State(str, Enum):
     PROCESSING = "processing"
     AWAITING_EDITING = "awaiting_editing"
     DRAFT_SAVED = "draft_saved"
-    AWAITING_REVIEW = "awaiting_review"
     FINAL_SAVED = "final_saved"
     DELETABLE = "deletable"
     CLOSED = "closed"
@@ -63,8 +62,7 @@ TRANSITIONS: dict[State, set[State]] = {
     State.RECEIVED: {State.PROCESSING, State.NEEDS_REPROCESS},
     State.PROCESSING: {State.AWAITING_EDITING, State.NEEDS_REPROCESS},
     State.AWAITING_EDITING: {State.DRAFT_SAVED, State.NEEDS_REPROCESS},
-    State.DRAFT_SAVED: {State.AWAITING_REVIEW, State.NEEDS_REPROCESS},
-    State.AWAITING_REVIEW: {State.FINAL_SAVED, State.NEEDS_REPROCESS},
+    State.DRAFT_SAVED: {State.FINAL_SAVED, State.NEEDS_REPROCESS},
     State.FINAL_SAVED: {State.DELETABLE, State.NEEDS_REPROCESS},
     State.DELETABLE: {State.CLOSED, State.NEEDS_REPROCESS},
     State.CLOSED: set(),
