@@ -8,7 +8,7 @@ from interview_pipeline.errors import (
     DraftMarkingError,
     EngineNotConfiguredError,
     InvalidTransitionError,
-    RepositoryNotPrivateError,
+    NoteStorageGuardError,
 )
 from interview_pipeline.states import TRANSITIONS, State
 
@@ -18,7 +18,7 @@ __all__ = [
     "DraftMarkingError",
     "EngineNotConfiguredError",
     "InvalidTransitionError",
-    "RepositoryNotPrivateError",
+    "NoteStorageGuardError",
     "State",
     "TRANSITIONS",
 ]

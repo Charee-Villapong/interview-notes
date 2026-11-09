@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
@@ -20,6 +21,7 @@ __all__ = [
     "DEFAULT_OVERDUE_DAYS",
     "DeletionGuardError",
     "assert_no_audio_files",
+    "check_note_storage",
     "execute_vm_deletion",
     "find_audio_files",
     "find_overdue_unprocessed",
@@ -71,6 +73,74 @@ def assert_no_audio_files(paths: Iterable[Path | str]) -> None:
         raise AudioContentError(
             "audio/video content detected: " + ", ".join(str(p) for p in found)
         )
+
+
+# ノート保存ガードの git 実行タイムアウト（秒）。確認が終わらない場合は
+# 「確認できない」として False に倒す（fail-closed）。
+_GIT_TIMEOUT_SECONDS = 10
+
+
+def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess | None:
+    """git を実行する。実行自体に失敗したら None（確認できない扱い）。"""
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def check_note_storage(destination: Path | str) -> bool:
+    """保存先が「公開され得ない格納場所」であることを git で機械確認する。
+
+    次のすべてを満たすときだけ True を返す。1つでも満たさない・
+    確認できない場合は False（fail-closed）:
+
+    - 保存先パスが git 作業コピーの内側にある
+    - 保存先ファイルが ``git check-ignore`` で ignore 済みと判定される
+    - 格納フォルダ（保存先の2階層上）配下で追跡済みのファイルが
+      ``README.md`` のみである（``git ls-files`` で確認）
+
+    git が実行できない・作業コピーでない場合も確認できないため False。
+    保存先の日付フォルダは保存時に作られるため、未存在でも判定できる
+    （git コマンドは既存の祖先ディレクトリから実行する）。
+    """
+    dest = Path(destination)
+    if shutil.which("git") is None:
+        return False
+
+    # git コマンドの実行起点として、保存先の最も近い既存の祖先を探す。
+    anchor = dest.parent
+    while not anchor.is_dir():
+        if anchor.parent == anchor:
+            return False
+        anchor = anchor.parent
+
+    top = _run_git(["rev-parse", "--show-toplevel"], anchor)
+    if top is None or top.returncode != 0:
+        return False
+    root = Path(top.stdout.strip()).resolve()
+
+    resolved = dest.resolve()
+    if root not in resolved.parents:
+        return False
+    rel = resolved.relative_to(root).as_posix()
+
+    ignored = _run_git(["check-ignore", "-q", "--", rel], root)
+    if ignored is None or ignored.returncode != 0:
+        return False
+
+    notes_rel = Path(rel).parent.parent.as_posix()
+    tracked = _run_git(["ls-files", "--full-name", "--", notes_rel], root)
+    if tracked is None or tracked.returncode != 0:
+        return False
+    entries = {line.strip() for line in tracked.stdout.splitlines() if line.strip()}
+    return entries <= {f"{notes_rel}/README.md"}
 
 
 def _state_name(session) -> str:

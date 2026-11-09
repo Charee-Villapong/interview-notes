@@ -1,6 +1,9 @@
 """下書き保存（保存ガード付き）。
 
-保存前に音声非含有チェックと保存先の非公開確認を必須とする。
+保存前に音声非含有チェックと保存先の格納ガード確認を必須とする。
+格納ガードは、保存先が公開され得ない格納場所（作業コピー内にあり、
+gitignore 済みで、格納フォルダの追跡ファイルが README.md のみ）で
+あることを、呼び出し側が渡す ``storage_checker`` で確認する。
 自動生成 md は冒頭に「下書き（未照合）」を含むこと。
 成功時は ``draft_saved`` → ``awaiting_review`` へ進める。
 """
@@ -14,7 +17,7 @@ from typing import Callable
 from interview_pipeline.errors import (
     AudioContentError,
     DraftMarkingError,
-    RepositoryNotPrivateError,
+    NoteStorageGuardError,
 )
 from interview_pipeline.guards import assert_no_audio_files
 from interview_pipeline.states import ERROR_KIND_AUDIO_CONTENT_DETECTED, State
@@ -23,7 +26,7 @@ from interview_pipeline.store import update_needs_reprocess_info
 __all__ = [
     "AudioContentError",
     "DraftMarkingError",
-    "RepositoryNotPrivateError",
+    "NoteStorageGuardError",
     "save_draft",
 ]
 
@@ -54,7 +57,7 @@ def save_draft(
     draft_path: Path | str,
     notes_dir: Path | str,
     *,
-    privacy_checker: Callable[[], bool],
+    storage_checker: Callable[[Path], bool],
 ) -> Path:
     draft = Path(draft_path)
     notes = Path(notes_dir)
@@ -84,25 +87,29 @@ def save_draft(
                 store.save()
         raise
 
-    # 2. 保存先が非公開であることの確認。
-    if not privacy_checker():
-        raise RepositoryNotPrivateError("destination repository is not private")
+    # 2. 配置先を決める: notes_dir/<日付>/<session_id>.md
+    date_part = _session_date_part(session, session_id)
+    destination_dir = notes / date_part
+    destination = destination_dir / f"{session_id}.md"
 
-    # 3. 下書き表記の検査（冒頭にあること）。
+    # 3. 保存先が公開され得ない格納場所であることの確認（格納ガード）。
+    if not storage_checker(destination):
+        raise NoteStorageGuardError(
+            "note destination is not confirmed as unpublished storage"
+        )
+
+    # 4. 下書き表記の検査（冒頭にあること）。
     content = draft.read_text(encoding="utf-8") if draft.is_file() else ""
     stripped = content.lstrip()
     first_line = stripped.splitlines()[0] if stripped.splitlines() else ""
     if DRAFT_MARKING not in first_line:
         raise DraftMarkingError("draft must start with the draft marking")
 
-    # 4. 配置先を決めて配置する: notes_dir/<日付>/<session_id>.md
-    date_part = _session_date_part(session, session_id)
-    destination_dir = notes / date_part
+    # 5. 配置する。
     destination_dir.mkdir(parents=True, exist_ok=True)
-    destination = destination_dir / f"{session_id}.md"
     shutil.copyfile(draft, destination)
 
-    # 5. 状態を draft_saved → awaiting_review へ進める。
+    # 6. 状態を draft_saved → awaiting_review へ進める。
     current_state = store.get(session_id).state
     if current_state is not State.DRAFT_SAVED:
         store.transition(session_id, State.DRAFT_SAVED)
