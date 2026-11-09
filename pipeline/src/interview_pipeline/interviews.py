@@ -68,9 +68,7 @@ class InterviewRecord:
     meeting_url: str = ""
     docs_doc_id: str = ""
     docs_url: str = ""
-    sheet_row: int | None = None
     note_error: str | None = None
-    sheet_error: str | None = None
     reminders: dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=_now)
     updated_at: datetime = field(default_factory=_now)
@@ -88,9 +86,7 @@ class InterviewRecord:
             "meeting_url": self.meeting_url,
             "docs_doc_id": self.docs_doc_id,
             "docs_url": self.docs_url,
-            "sheet_row": self.sheet_row,
             "note_error": self.note_error,
-            "sheet_error": self.sheet_error,
             "reminders": dict(self.reminders),
             "created_at": _datetime_to_str(self.created_at),
             "updated_at": _datetime_to_str(self.updated_at),
@@ -110,9 +106,7 @@ class InterviewRecord:
             meeting_url=data.get("meeting_url", ""),
             docs_doc_id=data.get("docs_doc_id", ""),
             docs_url=data.get("docs_url", ""),
-            sheet_row=data.get("sheet_row"),
             note_error=data.get("note_error"),
-            sheet_error=data.get("sheet_error"),
             reminders=dict(data.get("reminders", {})),
             created_at=_datetime_from_str(data.get("created_at")) or _now(),
             updated_at=_datetime_from_str(data.get("updated_at")) or _now(),

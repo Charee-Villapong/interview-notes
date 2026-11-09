@@ -1,12 +1,9 @@
-"""検知同期：カレンダー検知→レジストリ登録→Docsノート→Sheets行追加。
+"""検知同期：カレンダー検知→レジストリ登録→Docsノート。
 
 冪等に動作し、不足分だけを補う。失敗は成功扱いにせず、レジストリの
-``note_error``／``sheet_error``（種別のみ）とイベントログに記録し、
-次回の同期で再試行する。1件の失敗で他件の処理は止めない
+``note_error``（種別のみ）とイベントログに記録し、次回の同期で
+再試行する。1件の失敗で他件の処理は止めない
 （silent failure 禁止。正本 ``docs/状態管理.md``「通知・ログ」）。
-
-ノート未作成の間は行追加を保留する（行には必ず Docs リンクを載せる
-ため。保留は失敗扱いにしない。SPEC P2 決定事項 9）。
 """
 
 from __future__ import annotations
@@ -31,14 +28,12 @@ __all__ = ["SyncReport", "detection_window", "sync_interviews"]
 #: イベントログに記録する state／error_kind（内容は記録しない）。
 EVENT_STATE_INTERVIEW = "interview_sync"
 ERROR_KIND_NOTE_FAILED = "interview_note_failed"
-ERROR_KIND_SHEET_FAILED = "interview_sheet_failed"
 
 
 @dataclass
 class SyncReport:
     detected: list[str] = field(default_factory=list)
     notes_created: list[str] = field(default_factory=list)
-    rows_added: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
 
 
@@ -103,48 +98,6 @@ def _ensure_note(
         report.notes_created.append(record.session_id)
 
 
-def _ensure_row(
-    record: InterviewRecord,
-    gateway: GoogleGateway,
-    config: GoogleConfig,
-    report: SyncReport,
-    event_log,
-) -> None:
-    """Sheets行の追加を行う（ノートのリンクが得られている場合のみ）。"""
-    if record.sheet_row is not None or not record.docs_url:
-        return
-    try:
-        if gateway.sheet_row_exists(
-            config.sheets_spreadsheet_id, config.sheets_tab, record.session_id
-        ):
-            # レジストリを失った場合の二重追加防止（行番号は不明）。
-            record.sheet_row = -1
-            record.sheet_error = None
-            return
-        row_number = gateway.append_sheet_row(
-            config.sheets_spreadsheet_id,
-            config.sheets_tab,
-            [
-                record.date,
-                record.company,
-                record.format,
-                "",
-                "",
-                record.docs_url,
-            ],
-        )
-    except Exception as exc:  # ゲートウェイ失敗は種別のみ記録する
-        record.sheet_error = type(exc).__name__
-        if event_log is not None:
-            event_log.record(
-                record.session_id, EVENT_STATE_INTERVIEW, ERROR_KIND_SHEET_FAILED
-            )
-        return
-    record.sheet_row = row_number
-    record.sheet_error = None
-    report.rows_added.append(record.session_id)
-
-
 def sync_interviews(
     registry: InterviewRegistry,
     gateway: GoogleGateway,
@@ -190,14 +143,9 @@ def sync_interviews(
                 report.detected.append(record.session_id)
                 if event_log is not None:
                     event_log.record(record.session_id, "interview_detected")
-            before = (record.docs_doc_id, record.sheet_row)
+            before = record.docs_doc_id
             _ensure_note(record, gateway, config, tz, report, event_log)
-            _ensure_row(record, gateway, config, report, event_log)
-            if (
-                (record.docs_doc_id, record.sheet_row) != before
-                or record.note_error
-                or record.sheet_error
-            ):
+            if record.docs_doc_id != before or record.note_error:
                 record.updated_at = now
             registry.save()
     return report

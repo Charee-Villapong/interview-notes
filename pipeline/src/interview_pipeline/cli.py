@@ -278,17 +278,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             f"detected={report.detected} notes_created={report.notes_created} "
-            f"rows_added={report.rows_added} failed={report.failed}"
+            f"failed={report.failed}"
         )
         return 0 if not report.failed else 1
 
     if args.command == "interviews":
         for record in _registry(data_dir).all():
             note = "ok" if record.docs_doc_id else "pending"
-            print(
-                f"{record.session_id} {record.date} note={note} "
-                f"sheet_row={record.sheet_row}"
-            )
+            print(f"{record.session_id} {record.date} note={note}")
         return 0
 
     if args.command == "remind-check":
