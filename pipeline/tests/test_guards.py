@@ -152,7 +152,7 @@ def test_assert_no_audio_files_passes_without_audio(tmp_path):
 def test_vm_copy_deletable_only_when_completed_and_draft_saved(
     make_store, drive_to, t0
 ):
-    """処理完了＋下書き保存確認の両方を満たす時だけ True。"""
+    """処理完了＋要約の生成確認の両方を満たす時だけ True。"""
     from interview_pipeline.guards import vm_copy_deletable
 
     store, session = _session(make_store, t0)
@@ -165,7 +165,7 @@ def test_vm_copy_deletable_only_when_completed_and_draft_saved(
 
 
 def test_vm_copy_not_deletable_without_processing_completed(make_store, t0):
-    """下書き保存済みでも処理完了でなければ False。"""
+    """要約生成済みでも処理完了でなければ False。"""
     from interview_pipeline.guards import vm_copy_deletable
 
     _, session = _session(make_store, t0)
@@ -176,7 +176,7 @@ def test_vm_copy_not_deletable_without_processing_completed(make_store, t0):
 
 
 def test_vm_copy_not_deletable_without_draft_saved(make_store, t0):
-    """処理完了でも下書き保存確認がなければ False。"""
+    """処理完了でも要約の生成確認がなければ False。"""
     from interview_pipeline.guards import vm_copy_deletable
 
     _, session = _session(make_store, t0)
@@ -219,7 +219,7 @@ def test_execute_vm_deletion_removes_folder_and_records_timestamp(
 def test_execute_vm_deletion_refused_without_draft_saved(
     make_store, drive_to, exc, filekit, t0, tmp_path
 ):
-    """下書き未保存なら例外で拒否され、ファイルは残る。"""
+    """要約未生成なら例外で拒否され、ファイルは残る。"""
     from interview_pipeline.guards import execute_vm_deletion
 
     store, _ = _session(make_store, t0)

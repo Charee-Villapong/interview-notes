@@ -15,7 +15,7 @@
 | `ManifestBuilder.swift` | マニフェスト生成（サイズ＋SHA-256。形式は VM 側 P1 と同一） |
 | `TransferClient.swift` | SSH 経由の登録・配置・受信検証の要求、状態照会 |
 | `DeletionGuard.swift` | VM 側判定に基づくローカル音声の削除と、期限超過の未処理の可視化 |
-| `SessionStore.swift` | セッション記録（`state` は VM 側12状態の語彙、`localPhase` は Mac 内側の補助状態） |
+| `SessionStore.swift` | セッション記録（`state` は VM 側11状態の語彙、`localPhase` は Mac 内側の補助状態） |
 | `Config.swift` | ローカル設定の読み込み |
 | `Resources/Info.plist` | バンドル情報と利用目的の文言 |
 | `build.sh` | `.app` の組み立てと署名 |

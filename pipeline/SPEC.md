@@ -46,10 +46,11 @@
 
 - `AUDIO_VIDEO_EXTENSIONS: frozenset[str]`（値の正本は `../docs/状態管理.md`「保存ガードの拡張子リスト」）
 - `find_audio_files(paths) -> list[Path]` — 音声・動画拡張子（大文字小文字を区別しない）に一致するものを返す
-- `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（保存中止）
-- `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ 下書きの格納確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
+- `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（登録中止）
+- `check_note_destination(notes_repo, *, github) -> bool` — push 先が非公開リポジトリであることの確認。`github.repo_info` で可視性を取得し、`private` のときだけ True。形式不正・取得できない場合も False（fail-closed）
+- `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ 要約の生成確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
 - `execute_vm_deletion(store, session_id, inbox_dir) -> Path` — 実行直前に `vm_copy_deletable` を再確認し、満たさなければ `DeletionGuardError`。満たせば inbox のセッションフォルダを削除し、`vm_copy_deleted_at` を記録する
-- `mac_deletion_eligible(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、確定版が保存済み（`final_saved` 以降）かつ未処理でないこと（`needs_reprocess` でないこと）を満たすときだけ True（期限（最長7日）は削除の許可条件ではない）
+- `mac_deletion_eligible(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、要約が非公開リポジトリへ push 済み（`final_saved` 以降の状態で、`note_published_at` が記録されている）かつ未処理でないこと（`needs_reprocess` でないこと）を満たすときだけ True（期限（最長7日）は削除の許可条件ではない）
 - `find_overdue_unprocessed(store, now, days=7) -> list[Session]` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、録音から `days` を超え、`final_saved` 未到達のセッション（削除用ではなく可視化・再処理用）
 
 ### `transcribe.py`
@@ -72,14 +73,23 @@
 
 ### `saving.py`
 
-- `save_draft(store, session_id, draft_path, notes_dir, *, storage_checker) -> Path`
-  - 保存前に `assert_no_audio_files` を通す。チェック対象は「この保存で配置する全ファイル」（現行APIではドラフト本体。配置先のファイル名は `<session_id>.md` 固定で、保存処理がドラフト以外を配置することはない）。失敗したら保存せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。第二の防壁（`.gitignore`）については、正本 `../docs/状態管理.md`「保存ガードの拡張子リスト」を参照
-  - `storage_checker(destination)` が False なら保存せず `NoteStorageGuardError` を送出する（保存先が公開され得ない格納場所であることの確認。実チェッカーは `guards.check_note_storage`：保存先が git 作業コピー内にあり、`git check-ignore` で ignore 済みと判定され、格納フォルダの追跡ファイルが `README.md` のみであることを確認する。git が使えない等で確認できない場合も False＝保存しない）
-  - 成功時は md を `notes_dir/<日付>/<session_id>.md` へ配置し（フォルダ・ファイル名の規則は正本 `../docs/状態管理.md`「セッション識別子」参照。下書き表記の検査は正本「下書き表記」のとおりとし、満たさなければ `DraftMarkingError`）、状態を `draft_saved` → `awaiting_review` へ進める
+- `save_note(store, session_id, note_path) -> Path`
+  - 登録前に `assert_no_audio_files` を通す（チェック対象は要約ファイル本体）。失敗したら登録せず、`needs_reprocess`（resume: `awaiting_editing`、`error_kind="audio_content_detected"`）にして送出する。対象拡張子は正本 `../docs/状態管理.md`「保存ガードの拡張子リスト」を参照
+  - 要約ファイルが無い・空の場合は `NoteContentError` を送出し、状態は変えない
+  - 成功時はファイルをコピーせず、そのままの場所を「push 待ち」として登録し、状態を `draft_saved` へ進める（既に `draft_saved` なら冪等に成功する）
+
+### `publish.py`
+
+- `publish_note(store, session_id, note_path, *, notes_repo, github) -> str` — 要約を非公開リポジトリへ push し、ノートの URL を返す
+  - 対象は `draft_saved` のセッションのみ。それ以外は `NotePublishError`
+  - push 前に `guards.check_note_destination` で宛先が非公開であることを確認する。確認できなければ push しない
+  - 配置パスは `<日付>/<session_id>.md`（規則は正本 `../docs/状態管理.md`「セッション識別子」参照）。`GhGitHubClient` が `gh api` の contents API で作成／更新する
+  - push 後、リモート上の blob sha がローカル内容の git blob sha と一致することを確認する。一致しなければ `NotePublishError`（要約はローカルに保持し、状態は `draft_saved` のまま）
+  - 確認できたら `note_published_at` を記録し、状態を `final_saved` へ進め、ローカルの要約コピーを削除する（要約は VM ローカルに恒常保存しない。正本 `../docs/状態管理.md`「要約の保存先」参照）
 
 ## CLI（`cli.py`）
 
-`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`run`、`status`、`mark-final`（照合完了→確定版保存済み化）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、保存先は `INTERVIEW_NOTES_DIR`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
+`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`pull`、`run`、`status`、`save-note`（要約の登録。対象は `work/<session_id>/note.md`）、`publish-note`（非公開リポジトリへの push。失敗時はイベントに `note_publish_failed` を記録し、終了コード 1）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、push 先は `INTERVIEW_NOTES_REPO`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
 
 ## 決定事項
 
@@ -89,10 +99,11 @@
 4. マニフェストの配置は `staging/<session_id>/manifest.json` とする（手順書にも明記）。
 5. `transferring` のセッションは、1回のランで検証→処理まで進めてよい（テストは両対応）。
 6. イベントログのキーは `date`／`session_id`／`state`／`error_kind` の4つに固定する。
-7. 例外型は専用モジュール `errors.py` に集約する（`InvalidTransitionError`、`AudioContentError`、`DeletionGuardError`、`NoteStorageGuardError`、`DraftMarkingError`、`EngineNotConfiguredError`）。
+7. 例外型は専用モジュール `errors.py` に集約する（`InvalidTransitionError`、`AudioContentError`、`DeletionGuardError`、`NoteContentError`、`NotePublishError`、`EngineNotConfiguredError`）。
 8. `register` の初期状態は `recorded`。
 9. `processing_completed` は `awaiting_editing` への遷移時に立てる。
 10. `SessionStore` はインスタンス化時に既存ファイルがあれば自動で読み込む。
+11. 要約は本人の確認（照合）を経ず、生成後に非公開リポジトリへ push して完了とする。状態は11状態とする。
 
 ## テストの置き場
 
@@ -119,7 +130,7 @@ STT エンジン接続の追加契約。
 
 ## PULL 追加契約（転送のプル方式。2026-11-08 追記）
 
-転送は **VM 側プル** で行う。方式の正本は `../docs/状態管理.md`「転送方式（プル方式）」。本節はプルの追加契約であり、12状態・遷移・マニフェスト・受信検証・削除ガードの契約は変更しない。
+転送は **VM 側プル** で行う。方式の正本は `../docs/状態管理.md`「転送方式（プル方式）」。本節はプルの追加契約であり、状態・遷移・マニフェスト・受信検証・削除ガードの契約は変更しない。
 
 ### `states.py` 追加
 

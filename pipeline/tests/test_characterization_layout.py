@@ -14,8 +14,8 @@ docs/手順書.md「データ領域」（``state/sessions.json`` /
   正常系テストで固定済み（失敗時に作られないことも含む）。
 - transferring 検証成功時の ``inbox/<session_id>/`` 内のファイル名
   集合は test_runner.py で固定済み。
-- 下書き保存先 ``notes_dir/<日付>/<session_id>.md`` は
-  test_saving.py で固定済み。
+- 要約の push 先パス ``<日付>/<session_id>.md`` は
+  test_publish.py で固定済み。
 
 本ファイルが固定するのは:
 - 成功時に work 配下へ作られるファイルの完全な集合（余分な
@@ -190,7 +190,7 @@ def _cli_env(data_dir: Path, notes_dir: Path) -> dict:
     src_dir = Path(interview_pipeline.__file__).resolve().parent.parent
     env = dict(os.environ)
     env["INTERVIEW_DATA_DIR"] = str(data_dir)
-    env["INTERVIEW_NOTES_DIR"] = str(notes_dir)
+    env["INTERVIEW_NOTES_REPO"] = "owner/notes-repo"
     pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = (
         f"{src_dir}{os.pathsep}{pythonpath}" if pythonpath else str(src_dir)

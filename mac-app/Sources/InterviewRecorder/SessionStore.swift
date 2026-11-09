@@ -1,12 +1,12 @@
 import Foundation
 
-/// Mac 側のセッション記録。`state` には VM 側12状態の語彙
+/// Mac 側のセッション記録。`state` には VM 側11状態の語彙
 /// （docs/状態管理.md）だけを入れ、録音中などの Mac 内側の細かい
 /// 状態は `localPhase` に分離する（対応表は docs/P3計画.md）。
 /// フィールド名は VM 側 `Session`（pipeline の store.py）に揃える。
 struct MacSession: Codable {
     var sessionId: String
-    /// VM 側12状態の語彙。録音中（VM 未登録）は "unregistered" とする。
+    /// VM 側11状態の語彙。録音中（VM 未登録）は "unregistered" とする。
     var state: String
     /// Mac 内側の補助状態: recording / grace / finalizing /
     /// ready_to_transfer / uploading / uploaded / upload_failed /
