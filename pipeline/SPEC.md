@@ -98,77 +98,6 @@
 
 `pipeline/tests/` に pytest で置く。Mac や外部接続が要る部分はモック／一時ディレクトリで切り分ける。
 
-## P2 追加契約（Google連携。2026-11-08 追記）
-
-P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノートを追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
-
-### `google_config.py`
-
-- `GoogleConfig` — Google連携の設定。環境変数 `INTERVIEW_GOOGLE_CONFIG` が指す JSON ファイルから読み込む（実値はリポジトリに置かない）。主なキー：
-  `cli_path`（コネクタ CLI のパス）、`calendar_ids`（検知対象カレンダー）、`timezone`（日付判定のタイムゾーン）、`primary_keyword`（自己登録予定の主キー文字列）、`secondary_keywords`（自己登録予定の副キー文字列のリスト）、`invited_keywords`（招待予定の判定キーワード）、`docs_template_id`、`docs_folder_id`（任意）、`window_past_days`、`window_future_days`（検知ウィンドウ）
-- `load_google_config(path) -> GoogleConfig` — 欠けたキーは既定値（キーワード類・ウィンドウ・タイムゾーン）で補う
-
-### `gateway.py`
-
-- `CalendarEvent` — データクラス：`event_id`、`calendar_id`、`title`、`start`、`end`、`organizer_email`、`organizer_self: bool`、`location`、`description`、`meeting_url`、`cancelled: bool`
-- `GoogleGateway` — プロトコル。外部（Google）へのアクセスはすべてここを通す：
-  - `list_events(calendar_id, time_min, time_max) -> list[CalendarEvent]`
-  - `copy_template(template_id, name, folder_id) -> tuple[str, str]` — テンプレートを複製し、(ドキュメントID, URL) を返す
-  - `replace_note_fields(doc_id, fields: dict[str, str])` — ノート内の `{{キー}}` プレースホルダを置換する
-  - `read_note_text(doc_id) -> str` — ノート本文の平文を返す（未記入チェック用）
-- `CliGoogleGateway(config)` — `hatch_gws_cli` を subprocess で呼ぶ実装。失敗時は `GoogleGatewayError` を送出する
-- テストは `GoogleGateway` のフェイク実装で切り分ける（実接続しない）
-
-### `interviews.py`
-
-- `InterviewRecord` — データクラス：`event_id`、`session_id`、`date`（面談日。`YYYY-MM-DD`）、`start`、`end`、`title`、`company`（企業名の候補。抽出はベストエフォート）、`format`（形式）、`meeting_url`、`docs_doc_id`、`docs_url`、`note_error: str | None`、`reminders: dict[str, str]`（種別→送信日時）、`created_at`、`updated_at`
-- `InterviewRegistry(path)` — JSON ファイルへ永続化する。`SessionStore` と同じ流儀（インスタンス化時に自動で読み込む）
-  - `upsert(record) -> InterviewRecord` — `event_id` で冪等（既存なら既存を返す）
-  - `get_by_event(event_id)` / `get(session_id)` / `all()` / `save()`
-  - `assign_session_id(date, store) -> str` — 正本の採番規則（`<日付>_NN`）で、`SessionStore` の既存セッションとレジストリ内の同日レコードの両方と衝突しない最小の連番を返す
-- `is_interview_event(event, config) -> str | None` — 検知判定。検知した場合は根拠（`"primary"`／`"secondary"`／`"invited"`）、しなければ `None` を返す：
-  - キャンセル済み予定は常に対象外
-  - 自己登録予定（`organizer_self`）：タイトルに主キーを含めば `"primary"`、副キーを含めば `"secondary"`
-  - 招待予定：タイトルまたは説明文に招待キーワードを含めば `"invited"`
-- `extract_company(event) -> str` — タイトル中の括弧内先頭要素などから企業名の候補を抽出する（取れなければ空文字列。推測で埋めない）
-- `extract_format(event) -> str` — 場所または会議URLの種別から形式文字列を作る（取れなければ空文字列）
-
-### `sync.py`
-
-- `sync_interviews(registry, gateway, config, *, store, now) -> SyncReport` — 検知ウィンドウ内の全カレンダーを走査し、検知した予定について次を行う（既存レコードは不足分だけを補う冪等動作）：
-  1. 新規予定はセッションIDを採番してレジストリへ登録する
-  2. Docsノートが無ければテンプレートから作成し、基本情報プレースホルダ（`日時`／`企業`／`形式`／`会議URL`）を置換する。失敗したら `note_error` に種別のみを記録し、成功扱いにしない
-  3. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
-- `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`failed: list[str]`
-
-### CLI 追加（`cli.py`）
-
-- `detect` — 検知ウィンドウを走査し、検知結果（セッションID候補・根拠）を表示するだけ（書き込みなし）
-- `sync` — `sync_interviews` を実行し、結果件数を表示する
-- `interviews` — 検知レジストリの一覧を表示する
-- Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
-- CLI のゲートウェイ生成は `cli._build_gateway(config)` に集約する（テストでの差し替え点）
-
-### P2 決定事項
-
-1. 検知ウィンドウの既定値は、過去1日・未来31日とする。
-2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。
-3. `note_error` には例外クラス名のみを記録する（例外メッセージ等の内容は記録しない）。
-4. `CalendarEvent`／`InterviewRecord` の `start`／`end` はタイムゾーン付き `datetime` とし、レジストリの永続化では ISO 文字列へ変換する。
-5. `InterviewRegistry.get_by_event`／`get` は、未登録なら `None` を返す。
-6. `assign_session_id` の引数 `date` は `YYYY-MM-DD` 文字列とする。
-7. ノート作成の失敗は `SyncReport.failed` に入れない（`note_error` とイベントログで可視化する）。`failed` はカレンダー取得の失敗など想定外の失敗用とし、その場合はカレンダーIDを入れる。`sync_interviews` には任意引数 `event_log` を追加し、CLI はデータ領域のイベントログを渡す。
-8. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
-
-### P2 に関する既知の差異
-
-- 採番規則の差異: 正本の状態管理にある `SessionStore._next_id` は、重複時に「-2」サフィックスを付ける規則（例: `2026-09-01_01-2`）を持つ。一方 `InterviewRegistry.assign_session_id` は `_NN` 連番のみを採番し、`SessionStore` 側の既存IDとは衝突しない番号を選ぶ（「-2」形式は発行しない）。検知レジストリとセッション台帳でID形式が完全には一致しない点に注意する。P3 がレジストリのセッションIDを採用する際はこの差異を前提とする。
-
-### Docsノート テンプレートの契約
-
-- テンプレートの本文には、基本情報のプレースホルダ（`{{日時}}`／`{{企業}}`／`{{形式}}`／`{{会議URL}}`）と、準備（企業研究・想定問答・聞きたいこと）／振り返り（聞かれたこと・答え・次の一手）の見出しを置く。各セクションの初期本文は「（未記入）」とする（未記入チェックの機械判定に使う）
-- ノートのタイトルは `<session_id> 面談ノート` とする（企業名・個人名はタイトルに入れない。正本・運用方針どおり企業名はノート本文内にのみ書く）
-
 ## V1 追加契約（STTエンジン接続。2026-11-08 追記）
 
 STT エンジン接続の追加契約。
@@ -203,7 +132,7 @@ STT エンジン接続の追加契約。
 ### `pull.py`
 
 - `MacSessionRecord` — データクラス：`session_id: str`、`state: str`（Mac 側セッション記録の状態語彙）、`created_at: datetime | None`
-- `MacSource` — プロトコル。Mac へのアクセスはすべてここを通す（`gateway.py` の `GoogleGateway` と同じ流儀。テストはフェイク実装で切り分ける）：
+- `MacSource` — プロトコル。Mac へのアクセスはすべてここを通す（テストはフェイク実装で切り分ける）：
   - `list_sessions() -> list[MacSessionRecord]` — Mac 側セッション記録の一覧を返す。記録自体を取得できない場合は `MacFetchError` を送出する
   - `fetch_file(session_id, name) -> bytes` — Mac 側の録音置き場から `<session_id>/<name>` の内容を取得する。失敗は `MacFetchError`
 - `SshMacSource(ssh_command, remote_app_dir)` — 既存の VM→Mac SSH 経路で取得する実装。`ssh_command` は SSH 実行コマンド（ラッパースクリプト等）へのパス、`remote_app_dir` は Mac 側のアプリデータ領域（`sessions.json` と `recordings/` の親ディレクトリ）。リモートの読み取りは標準出力経由で行い、接続先・パスの実値は引数（設定）でのみ与える
