@@ -7,14 +7,14 @@
 一部を日付とみなす前提の埋没）、pipeline/SPEC.md の ``saving.py`` 契約。
 
 既存テストで固定済みの範囲（本ファイルでは重複させない）:
-test_saving.py が正常系の配置・音声中止・非公開拒否・表記の冒頭必須
+test_saving.py が正常系の配置・音声中止・格納ガード拒否・表記の冒頭必須
 （本文途中のみは不可）を固定済み。
 
 本ファイルが固定するのは:
 - 既に needs_reprocess のセッションへの音声保存（遷移できない場合の
   フォールバック直接更新で error_kind / resume_state が書き換わる）
 - created_at が無い場合の日付フォールバック（session_id の日付部分）
-- チェック順序（音声 → 非公開 → 表記）の現行挙動
+- チェック順序（音声 → 格納ガード → 表記）の現行挙動
 - 下書き表記の判定範囲（1行目のどこかにあれば可、行頭の空白・空行は
   lstrip で読み飛ばされる）
 - ドラフトファイル自体が無い場合（DraftMarkingError、状態不変）
@@ -40,11 +40,11 @@ def _setup(make_store, drive_to, t0, tmp_path, target="awaiting_editing"):
     return store, notes_dir
 
 
-def _save(store, draft_path, notes_dir, privacy_checker=lambda: True):
+def _save(store, draft_path, notes_dir, storage_checker=lambda dest: True):
     from interview_pipeline.saving import save_draft
 
     return save_draft(
-        store, SID, draft_path, notes_dir, privacy_checker=privacy_checker
+        store, SID, draft_path, notes_dir, storage_checker=storage_checker
     )
 
 
@@ -106,44 +106,44 @@ def test_save_draft_date_falls_back_to_session_id_prefix(
 
 
 # ---------------------------------------------------------------------------
-# チェック順序（音声 → 非公開 → 表記）
+# チェック順序（音声 → 格納ガード → 表記）
 # ---------------------------------------------------------------------------
 
 
-def test_save_draft_audio_check_precedes_privacy_check(
+def test_save_draft_audio_check_precedes_storage_check(
     make_store, drive_to, exc, t0, tmp_path
 ):
-    """音声かつ非公開でない場合は、音声側の例外が先に出る。"""
+    """音声かつ格納ガードが通らない場合は、音声側の例外が先に出る。"""
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     audio_draft = tmp_path / "draft.mp3"
     audio_draft.write_bytes(b"dummy")
 
     with pytest.raises(exc("AudioContentError")):
-        _save(store, audio_draft, notes_dir, privacy_checker=lambda: False)
+        _save(store, audio_draft, notes_dir, storage_checker=lambda dest: False)
 
 
-def test_save_draft_privacy_check_precedes_marking_check(
+def test_save_draft_storage_check_precedes_marking_check(
     make_store, drive_to, exc, t0, tmp_path
 ):
-    """表記が無くても、非公開でない場合は非公開側の例外が先に出る。"""
+    """表記が無くても、格納ガードが通らない場合はガード側の例外が先に出る。"""
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     draft = tmp_path / "draft.md"
     draft.write_text("# 表記なし\n", encoding="utf-8")
 
-    with pytest.raises(exc("RepositoryNotPrivateError")):
-        _save(store, draft, notes_dir, privacy_checker=lambda: False)
+    with pytest.raises(exc("NoteStorageGuardError")):
+        _save(store, draft, notes_dir, storage_checker=lambda dest: False)
 
 
-def test_save_draft_privacy_failure_leaves_state_untouched(
+def test_save_draft_storage_failure_leaves_state_untouched(
     make_store, drive_to, exc, state_name, t0, tmp_path
 ):
-    """非公開で拒否された場合は状態も draft_saved_at も変わらない。"""
+    """格納ガードで拒否された場合は状態も draft_saved_at も変わらない。"""
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     draft = tmp_path / "draft.md"
     draft.write_text(VALID_DRAFT, encoding="utf-8")
 
-    with pytest.raises(exc("RepositoryNotPrivateError")):
-        _save(store, draft, notes_dir, privacy_checker=lambda: False)
+    with pytest.raises(exc("NoteStorageGuardError")):
+        _save(store, draft, notes_dir, storage_checker=lambda dest: False)
 
     session = store.get(SID)
     assert state_name(session.state) == "awaiting_editing"

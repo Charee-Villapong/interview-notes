@@ -2,7 +2,7 @@
 
 根拠: pipeline/SPEC.md の ``saving.py`` 契約、docs/状態管理.md
 「遷移条件」（awaiting_editing → draft_saved は保存ガード通過が必須）、
-docs/手順書.md「保存ガード」（音声非含有・保存先の非公開確認・
+docs/手順書.md「保存ガード」（音声非含有・保存先の格納ガード確認・
 冒頭に「下書き（未照合）」明示）。
 
 前提（解釈）: 保存先の日付フォルダはセッションの日付（セッションIDの
@@ -39,11 +39,11 @@ def _saved_files(notes_dir: Path) -> list[Path]:
     return sorted(p for p in notes_dir.rglob("*") if p.is_file())
 
 
-def _save(store, draft_path, notes_dir, privacy_checker):
+def _save(store, draft_path, notes_dir, storage_checker):
     from interview_pipeline.saving import save_draft
 
     return save_draft(
-        store, SID, draft_path, notes_dir, privacy_checker=privacy_checker
+        store, SID, draft_path, notes_dir, storage_checker=storage_checker
     )
 
 
@@ -54,7 +54,7 @@ def test_save_draft_success_places_file_and_advances_state(
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     draft = _write_draft(tmp_path)
 
-    saved = _save(store, draft, notes_dir, privacy_checker=lambda: True)
+    saved = _save(store, draft, notes_dir, storage_checker=lambda dest: True)
 
     assert isinstance(saved, Path)
     assert saved.exists()
@@ -77,7 +77,7 @@ def test_save_draft_with_audio_draft_aborts(
     audio_draft.write_bytes(b"dummy-audio")
 
     with pytest.raises(exc("AudioContentError")):
-        _save(store, audio_draft, notes_dir, privacy_checker=lambda: True)
+        _save(store, audio_draft, notes_dir, storage_checker=lambda dest: True)
 
     assert _saved_files(notes_dir) == []
     session = store.get(SID)
@@ -96,7 +96,7 @@ def test_save_draft_with_uppercase_audio_extension_aborts(
     audio_draft.write_bytes(b"dummy-video")
 
     with pytest.raises(exc("AudioContentError")):
-        _save(store, audio_draft, notes_dir, privacy_checker=lambda: True)
+        _save(store, audio_draft, notes_dir, storage_checker=lambda dest: True)
 
     assert _saved_files(notes_dir) == []
     assert state_name(store.get(SID).state) == "needs_reprocess"
@@ -114,24 +114,42 @@ def test_save_draft_rejects_various_audio_extensions(
     audio_draft.write_bytes(b"dummy")
 
     with pytest.raises(exc("AudioContentError")):
-        _save(store, audio_draft, notes_dir, privacy_checker=lambda: True)
+        _save(store, audio_draft, notes_dir, storage_checker=lambda dest: True)
     assert _saved_files(notes_dir) == []
 
 
-def test_save_draft_refused_when_repository_not_private(
+def test_save_draft_refused_when_storage_check_fails(
     make_store, drive_to, exc, state_name, t0, tmp_path
 ):
-    """保存先が非公開でない場合は保存しない（例外）。"""
+    """保存先の格納ガード確認が通らない場合は保存しない（例外）。"""
     store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
     draft = _write_draft(tmp_path)
 
-    with pytest.raises(exc("RepositoryNotPrivateError")):
-        _save(store, draft, notes_dir, privacy_checker=lambda: False)
+    with pytest.raises(exc("NoteStorageGuardError")):
+        _save(store, draft, notes_dir, storage_checker=lambda dest: False)
 
     assert _saved_files(notes_dir) == []
     session = store.get(SID)
     assert session.draft_saved_at is None
     assert state_name(session.state) != "awaiting_review"
+
+
+def test_save_draft_storage_checker_receives_destination(
+    make_store, drive_to, t0, tmp_path
+):
+    """格納ガードには、配置先（notes_dir/<日付>/<session_id>.md）が渡る。"""
+    store, notes_dir = _setup(make_store, drive_to, t0, tmp_path)
+    draft = _write_draft(tmp_path)
+    seen: list[Path] = []
+
+    def checker(destination: Path) -> bool:
+        seen.append(destination)
+        return True
+
+    saved = _save(store, draft, notes_dir, storage_checker=checker)
+
+    assert seen == [notes_dir / DATE_DIR / f"{SID}.md"]
+    assert saved == seen[0]
 
 
 def test_save_draft_without_draft_marking_rejected(
@@ -142,7 +160,7 @@ def test_save_draft_without_draft_marking_rejected(
     draft = _write_draft(tmp_path, content="# 面談メモ\n表記のない本文。\n")
 
     with pytest.raises(exc("DraftMarkingError")):
-        _save(store, draft, notes_dir, privacy_checker=lambda: True)
+        _save(store, draft, notes_dir, storage_checker=lambda dest: True)
 
     assert _saved_files(notes_dir) == []
     session = store.get(SID)
@@ -157,6 +175,6 @@ def test_save_draft_marking_must_be_at_top(make_store, drive_to, exc, t0, tmp_pa
     draft = _write_draft(tmp_path, content=content)
 
     with pytest.raises(exc("DraftMarkingError")):
-        _save(store, draft, notes_dir, privacy_checker=lambda: True)
+        _save(store, draft, notes_dir, storage_checker=lambda dest: True)
 
     assert _saved_files(notes_dir) == []
