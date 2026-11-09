@@ -100,13 +100,13 @@
 
 ## P2 追加契約（Google連携。2026-11-08 追記）
 
-P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノート／Sheets面談一覧を追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
+P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノートを追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
 
 ### `google_config.py`
 
 - `GoogleConfig` — Google連携の設定。環境変数 `INTERVIEW_GOOGLE_CONFIG` が指す JSON ファイルから読み込む（実値はリポジトリに置かない）。主なキー：
-  `cli_path`（コネクタ CLI のパス）、`calendar_ids`（検知対象カレンダー）、`timezone`（日付判定のタイムゾーン）、`primary_keyword`（自己登録予定の主キー文字列）、`secondary_keywords`（自己登録予定の副キー文字列のリスト）、`invited_keywords`（招待予定の判定キーワード）、`sheets_spreadsheet_id`、`sheets_tab`、`docs_template_id`、`docs_folder_id`（任意）、`window_past_days`、`window_future_days`（検知ウィンドウ）
-- `load_google_config(path) -> GoogleConfig` — 欠けたキーは既定値（キーワード類・ウィンドウ・タイムゾーン）で補い、必須キー（`sheets_spreadsheet_id` 等）の不足は利用時に明確なエラーにする
+  `cli_path`（コネクタ CLI のパス）、`calendar_ids`（検知対象カレンダー）、`timezone`（日付判定のタイムゾーン）、`primary_keyword`（自己登録予定の主キー文字列）、`secondary_keywords`（自己登録予定の副キー文字列のリスト）、`invited_keywords`（招待予定の判定キーワード）、`docs_template_id`、`docs_folder_id`（任意）、`window_past_days`、`window_future_days`（検知ウィンドウ）
+- `load_google_config(path) -> GoogleConfig` — 欠けたキーは既定値（キーワード類・ウィンドウ・タイムゾーン）で補う
 
 ### `gateway.py`
 
@@ -116,14 +116,12 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
   - `copy_template(template_id, name, folder_id) -> tuple[str, str]` — テンプレートを複製し、(ドキュメントID, URL) を返す
   - `replace_note_fields(doc_id, fields: dict[str, str])` — ノート内の `{{キー}}` プレースホルダを置換する
   - `read_note_text(doc_id) -> str` — ノート本文の平文を返す（未記入チェック用）
-  - `append_sheet_row(spreadsheet_id, tab, values: list[str]) -> int` — 行を追加し、追加された行番号を返す
-  - `sheet_row_exists(spreadsheet_id, tab, session_id) -> bool` — セッションIDを含む行が既にあるか（二重追加防止の第二確認）
 - `CliGoogleGateway(config)` — `hatch_gws_cli` を subprocess で呼ぶ実装。失敗時は `GoogleGatewayError` を送出する
 - テストは `GoogleGateway` のフェイク実装で切り分ける（実接続しない）
 
 ### `interviews.py`
 
-- `InterviewRecord` — データクラス：`event_id`、`session_id`、`date`（面談日。`YYYY-MM-DD`）、`start`、`end`、`title`、`company`（企業名の候補。抽出はベストエフォート）、`format`（形式）、`meeting_url`、`docs_doc_id`、`docs_url`、`sheet_row: int | None`、`note_error: str | None`、`sheet_error: str | None`、`reminders: dict[str, str]`（種別→送信日時）、`created_at`、`updated_at`
+- `InterviewRecord` — データクラス：`event_id`、`session_id`、`date`（面談日。`YYYY-MM-DD`）、`start`、`end`、`title`、`company`（企業名の候補。抽出はベストエフォート）、`format`（形式）、`meeting_url`、`docs_doc_id`、`docs_url`、`note_error: str | None`、`reminders: dict[str, str]`（種別→送信日時）、`created_at`、`updated_at`
 - `InterviewRegistry(path)` — JSON ファイルへ永続化する。`SessionStore` と同じ流儀（インスタンス化時に自動で読み込む）
   - `upsert(record) -> InterviewRecord` — `event_id` で冪等（既存なら既存を返す）
   - `get_by_event(event_id)` / `get(session_id)` / `all()` / `save()`
@@ -140,9 +138,8 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 - `sync_interviews(registry, gateway, config, *, store, now) -> SyncReport` — 検知ウィンドウ内の全カレンダーを走査し、検知した予定について次を行う（既存レコードは不足分だけを補う冪等動作）：
   1. 新規予定はセッションIDを採番してレジストリへ登録する
   2. Docsノートが無ければテンプレートから作成し、基本情報プレースホルダ（`日時`／`企業`／`形式`／`会議URL`）を置換する。失敗したら `note_error` に種別のみを記録し、成功扱いにしない
-  3. Sheets行が無く、かつDocsノートのリンクが得られている場合に、面談一覧へ1行追加する（列：日付・企業・形式・結果・次のアクション・Docsノートへのリンク）。ノート未作成の間は行追加を保留し、失敗扱いにしない。行が既にあるかはレジストリとシート側の両方で確認する
-  4. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
-- `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`rows_added: list[str]`、`failed: list[str]`
+  3. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
+- `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`failed: list[str]`
 
 ### CLI 追加（`cli.py`）
 
@@ -155,14 +152,13 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 ### P2 決定事項
 
 1. 検知ウィンドウの既定値は、過去1日・未来31日とする。
-2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。`sheets_spreadsheet_id` が無い状態でのシート操作は `GoogleGatewayError` とする。
-3. `note_error`／`sheet_error` には例外クラス名のみを記録する（例外メッセージ等の内容は記録しない）。
+2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。
+3. `note_error` には例外クラス名のみを記録する（例外メッセージ等の内容は記録しない）。
 4. `CalendarEvent`／`InterviewRecord` の `start`／`end` はタイムゾーン付き `datetime` とし、レジストリの永続化では ISO 文字列へ変換する。
 5. `InterviewRegistry.get_by_event`／`get` は、未登録なら `None` を返す。
 6. `assign_session_id` の引数 `date` は `YYYY-MM-DD` 文字列とする。
 7. ノート作成の失敗は `SyncReport.failed` に入れない（`note_error` とイベントログで可視化する）。`failed` はカレンダー取得の失敗など想定外の失敗用とし、その場合はカレンダーIDを入れる。`sync_interviews` には任意引数 `event_log` を追加し、CLI はデータ領域のイベントログを渡す。
 8. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
-9. `sheet_row` が `-1` の場合は「シート側に既存の行がある（行番号は不明）」を表す番兵値とする（レジストリを失った場合の二重追加防止）。
 
 ### P2 に関する既知の差異
 
