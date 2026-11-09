@@ -1,6 +1,6 @@
 # パイプライン実装仕様（インターフェース契約）
 
-本書は、テスト係と実装係の共通の契約である。テストは本書と企画書の完了の定義だけから書き、実装は本書の公開インターフェースを満たすこと。状態と遷移条件の正本は `../docs/状態管理.md`。
+本書は、パイプラインの公開インターフェース契約である。実装は本書の公開インターフェースを満たすこと。状態と遷移条件の正本は `../docs/状態管理.md`。
 
 ## パッケージ
 
@@ -81,7 +81,7 @@
 
 `python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`run`、`status`、`mark-final`（照合完了→確定版保存済み化）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、保存先は `INTERVIEW_NOTES_DIR`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
 
-## 決定事項（テスト係からの申し送りへの PM 回答。2026-11-07）
+## 決定事項
 
 1. `closed` は終端状態とし、外向きの遷移を持たない（`closed → needs_reprocess` は不可）。
 2. `needs_reprocess` からの復帰は `resume_state` への遷移のみとし、`TRANSITIONS` では `needs_reprocess → {transfer_pending, received, awaiting_editing}` を許可する。実際の再開先はレコードの `resume_state` に従う。
@@ -152,7 +152,7 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 - Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
 - CLI のゲートウェイ生成は `cli._build_gateway(config)` に集約する（テストでの差し替え点）
 
-### P2 決定事項（テスト係からの申し送りへの PM 回答。2026-11-08）
+### P2 決定事項
 
 1. 検知ウィンドウの既定値は、過去1日・未来31日とする。
 2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。`sheets_spreadsheet_id` が無い状態でのシート操作は `GoogleGatewayError` とする。
@@ -164,10 +164,9 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 8. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
 9. `sheet_row` が `-1` の場合は「シート側に既存の行がある（行番号は不明）」を表す番兵値とする（レジストリを失った場合の二重追加防止）。
 
-### P2 実装後の記録（QA申し送り・申し送り事項。2026-11-08）
+### P2 に関する既知の差異
 
-- 採番規則の差異（QA必須対応）: 正本の状態管理にある `SessionStore._next_id` は、重複時に「-2」サフィックスを付ける規則（例: `2026-09-01_01-2`）を持つ。一方 `InterviewRegistry.assign_session_id` は `_NN` 連番のみを採番し、`SessionStore` 側の既存IDとは衝突しない番号を選ぶ（「-2」形式は発行しない）。検知レジストリとセッション台帳でID形式が完全には一致しない点を、既知の差異として記録する。P3 がレジストリのセッションIDを採用する際はこの差異を前提とする。
-- Sheets への行追加は現在 `gateway.append_sheet_row`（values append）が担うが、書式担保のための共通 sheet-writer tool が別途開発中であり、完成後は行追加経路を同 tool 経由に差し替える（第1波の載せ替え対象。P2 の完了・push 後に別担当が実施）。
+- 採番規則の差異: 正本の状態管理にある `SessionStore._next_id` は、重複時に「-2」サフィックスを付ける規則（例: `2026-09-01_01-2`）を持つ。一方 `InterviewRegistry.assign_session_id` は `_NN` 連番のみを採番し、`SessionStore` 側の既存IDとは衝突しない番号を選ぶ（「-2」形式は発行しない）。検知レジストリとセッション台帳でID形式が完全には一致しない点に注意する。P3 がレジストリのセッションIDを採用する際はこの差異を前提とする。
 
 ### Docsノート テンプレートの契約
 
@@ -176,17 +175,16 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 
 ## V1 追加契約（STTエンジン接続。2026-11-08 追記）
 
-V1 の実測（同一の正解テキスト付き日本語音声・同一条件：faster-whisper／CPU 4スレッド／int8／language=ja／beam_size=5／vad_filter=False）に基づく接続契約。実測値の詳細は `docs/開発ノート.md`「V1 実測結果」を参照。
+STT エンジン接続の追加契約。
 
 ### `transcribe.py` 追加
 
 - `FasterWhisperTranscriber` — faster-whisper を実エンジンとする `Transcriber` 実装
-  - 引数：`model_name`（既定は本人確定モデル `large-v3-turbo`）、`compute_type="int8"`、`cpu_threads=4`、`language="ja"`、`beam_size=5`、`vad_filter=False`（いずれも実測と同一条件を既定とする）
+  - 引数：`model_name`（既定は `large-v3-turbo`）、`compute_type="int8"`、`cpu_threads=4`、`language="ja"`、`beam_size=5`、`vad_filter=False`
   - `faster_whisper` の import とモデル読み込みは遅延する（生成時には読み込まない。初回 `transcribe` 時に読み込み、以降は再利用する）。これにより、エンジン未導入の環境でもパッケージの import と他機能は使える
   - テストでの差し替え点として、モデル生成関数を差し替え可能にする（実エンジンを要しない単体テストのため）
   - `faster_whisper` が import できない環境では、`EngineNotConfiguredError`（`stt_not_configured`）を送出する（正本 `../docs/状態管理.md`「STTエンジン未接続時の扱い」に従い、未設定として扱う）
   - 返却する `Segment` の `start`／`end`／`text` はエンジンのセグメント値をそのまま使う
-- モデルは 2026-11-08 に本人が `large-v3-turbo` で確定した（V1 実測：CER 合計0.50%／RTF 0.703／ピークRSS 1,623MB）。既定モデル名はこの確定モデルを指す。なお、合格ライン（J-9）の確定値は台本リハーサルの実測後に本人が別途最終確定するものであり、本契約の暫定ラインはそのまま維持する
 
 ### CLI 追加（`cli.py`）
 
@@ -196,7 +194,7 @@ V1 の実測（同一の正解テキスト付き日本語音声・同一条件�
 
 ## PULL 追加契約（転送のプル方式。2026-11-08 追記）
 
-本人の設計変更決定（2026-11-08）により、転送は Mac→VM プッシュから **VM 側プル** へ変更する。経緯と方式の正本は `../docs/状態管理.md`「転送方式（プル方式）」。12状態・遷移・マニフェスト・受信検証・削除ガードの契約は変更しない。変えるのは「誰がファイルを運ぶか」だけである。
+転送は **VM 側プル** で行う。方式の正本は `../docs/状態管理.md`「転送方式（プル方式）」。本節はプルの追加契約であり、12状態・遷移・マニフェスト・受信検証・削除ガードの契約は変更しない。
 
 ### `states.py` 追加
 
