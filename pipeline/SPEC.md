@@ -100,7 +100,7 @@
 
 ## P2 追加契約（Google連携。2026-11-08 追記）
 
-P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノート／Sheets面談一覧→リマインド判定を追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
+P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノート／Sheets面談一覧を追加する。状態と遷移条件の正本は引き続き `../docs/状態管理.md` とし、**12状態と遷移は変更しない**。検知側の記録は録音セッション（`SessionStore`）とは別の「検知レジストリ」が持ち、セッションIDで紐付ける（`recorded` は「録音済み」を意味するため、未録音の予定を `SessionStore` へ登録しない。セッションIDの採番規則は正本「セッション識別子」に従い、同日の既存セッション（`SessionStore`）と検知レジストリの両方を見て連番を決める）。
 
 ### `google_config.py`
 
@@ -144,26 +144,11 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
   4. 失敗は `SyncReport` とイベントログに記録する（silent failure 禁止。他件の処理は止めない）
 - `SyncReport` — `detected: list[str]`（新規登録したセッションID）、`notes_created: list[str]`、`rows_added: list[str]`、`failed: list[str]`
 
-### `reminders.py`
-
-- リマインド種別は `eve`（前日）／`day_morning`（当日・午前）／`day_evening`（当日・午後＝振り返り記入）の3つ
-- `due_reminders(registry, now, slot, *, note_texts) -> list[Reminder]` — 判定はコードで固定する：
-  - 面談日が翌日：`eve`（スロット不問。送信済みなら出さない）。本文には準備セクションの未記入項目を含める
-  - 面談日が当日かつ `slot == "morning"`：`day_morning`
-  - 面談日が当日かつ `slot == "evening"`：`day_evening`
-  - いずれでもない場合は空（何も送らない）
-- 仕様変更（2026-11-09、本人の判断）：リマインドは全廃（前日 `eve`・当日 `day_morning`・振り返り `day_evening` のすべて。当初は振り返り `day_evening` のみを廃止し、同日中に残り2種別も廃止した）。コードの判定は従来どおり3種別を返すが、定期実行（朝・夕チェック cron）では `remind-check` 自体を実行せず、配信も `remind-mark` もしない。定期実行の役割は検知・同期（`sync`）と異常報告のみとする。コード（`reminders.py`・CLI）自体は変更しない
-- `unfilled_sections(note_text) -> list[str]` — テンプレートの準備セクション（企業研究・想定問答・聞きたいこと）のうち、本文が空または「（未記入）」のままのものを返す
-- `mark_reminded(registry, event_id, kind, at)` — 送信済みを記録する（`remind-check` では記録せず、送信後に `remind-mark` で記録する二段構え）
-- `Reminder` — `event_id`、`session_id`、`kind`、`text`（定型文で生成した通知文）
-
 ### CLI 追加（`cli.py`）
 
 - `detect` — 検知ウィンドウを走査し、検知結果（セッションID候補・根拠）を表示するだけ（書き込みなし）
 - `sync` — `sync_interviews` を実行し、結果件数を表示する
 - `interviews` — 検知レジストリの一覧を表示する
-- `remind-check --slot morning|evening [--dry-run]` — 送信対象のリマインドを JSON で表示する（記録はしない）
-- `remind-mark <event_id> <kind>` — リマインド送信済みを記録する
 - Google連携の設定は環境変数 `INTERVIEW_GOOGLE_CONFIG`、データ領域は既存の `INTERVIEW_DATA_DIR`（レジストリは `state/interviews.json`）
 - CLI のゲートウェイ生成は `cli._build_gateway(config)` に集約する（テストでの差し替え点）
 
@@ -173,18 +158,15 @@ P2 は面談検知（カレンダー起点）→検知レジストリ→Docsノ�
 2. 必須キー不足の扱い：設定ファイル自体の欠落・破損は `GoogleConfigError` で失敗する。`docs_template_id` が無い状態でのノート作成は、例外にせず `note_error="docs_template_not_configured"` として記録し、成功扱いにしない。`sheets_spreadsheet_id` が無い状態でのシート操作は `GoogleGatewayError` とする。
 3. `note_error`／`sheet_error` には例外クラス名のみを記録する（例外メッセージ等の内容は記録しない）。
 4. `CalendarEvent`／`InterviewRecord` の `start`／`end` はタイムゾーン付き `datetime` とし、レジストリの永続化では ISO 文字列へ変換する。
-5. `due_reminders` の `note_texts` のキーは `event_id` を主とし、`session_id` でも引けるようにする。
-6. `InterviewRegistry.get_by_event`／`get` は、未登録なら `None` を返す。
-7. `assign_session_id` の引数 `date` は `YYYY-MM-DD` 文字列とする。
-8. `remind-check` の JSON は、`Reminder` の `event_id`／`session_id`／`kind`／`text` をキーとするオブジェクトのリストとする。
-9. ノート作成の失敗は `SyncReport.failed` に入れない（`note_error` とイベントログで可視化する）。`failed` はカレンダー取得の失敗など想定外の失敗用とし、その場合はカレンダーIDを入れる。`sync_interviews` には任意引数 `event_log` を追加し、CLI はデータ領域のイベントログを渡す。
-10. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
-11. `sheet_row` が `-1` の場合は「シート側に既存の行がある（行番号は不明）」を表す番兵値とする（レジストリを失った場合の二重追加防止）。
+5. `InterviewRegistry.get_by_event`／`get` は、未登録なら `None` を返す。
+6. `assign_session_id` の引数 `date` は `YYYY-MM-DD` 文字列とする。
+7. ノート作成の失敗は `SyncReport.failed` に入れない（`note_error` とイベントログで可視化する）。`failed` はカレンダー取得の失敗など想定外の失敗用とし、その場合はカレンダーIDを入れる。`sync_interviews` には任意引数 `event_log` を追加し、CLI はデータ領域のイベントログを渡す。
+8. `extract_format` は、場所と会議URLの両方がある場合は場所を優先する。
+9. `sheet_row` が `-1` の場合は「シート側に既存の行がある（行番号は不明）」を表す番兵値とする（レジストリを失った場合の二重追加防止）。
 
 ### P2 実装後の記録（QA申し送り・申し送り事項。2026-11-08）
 
 - 採番規則の差異（QA必須対応）: 正本の状態管理にある `SessionStore._next_id` は、重複時に「-2」サフィックスを付ける規則（例: `2026-09-01_01-2`）を持つ。一方 `InterviewRegistry.assign_session_id` は `_NN` 連番のみを採番し、`SessionStore` 側の既存IDとは衝突しない番号を選ぶ（「-2」形式は発行しない）。検知レジストリとセッション台帳でID形式が完全には一致しない点を、既知の差異として記録する。P3 がレジストリのセッションIDを採用する際はこの差異を前提とする。
-- `remind-check`（CLI）は `note_texts` を `event_id` キーで組み立てる（決定事項5の主キー側）。`due_reminders` は `session_id` キーでも引ける。
 - Sheets への行追加は現在 `gateway.append_sheet_row`（values append）が担うが、書式担保のための共通 sheet-writer tool が別途開発中であり、完成後は行追加経路を同 tool 経由に差し替える（第1波の載せ替え対象。P2 の完了・push 後に別担当が実施）。
 
 ### Docsノート テンプレートの契約
