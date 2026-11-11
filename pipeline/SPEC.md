@@ -49,7 +49,8 @@
 - `assert_no_audio_files(paths)` — 1件でもあれば `AudioContentError` を送出（登録中止）
 - `check_note_destination(notes_repo, *, github) -> bool` — push 先が非公開リポジトリであることの確認。`github.repo_info` で可視性を取得し、`private` のときだけ True。形式不正・取得できない場合も False（fail-closed）
 - `vm_copy_deletable(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、処理完了（`processing` を正常終了している）かつ 要約の生成確認（`draft_saved` 以降の状態で、`draft_saved_at` が記録されている）の両方を満たすときだけ True
-- `execute_vm_deletion(store, session_id, inbox_dir) -> Path` — 実行直前に `vm_copy_deletable` を再確認し、満たさなければ `DeletionGuardError`。満たせば inbox のセッションフォルダを削除し、`vm_copy_deleted_at` を記録する
+- `execute_vm_deletion(store, session_id, inbox_dir) -> Path` — 実行直前に `vm_copy_deletable` を再確認し、満たさなければ `DeletionGuardError`。満たせば inbox のセッションフォルダを削除し、`vm_copy_deleted_at` を記録する。記録後に状態が `deletable` で Mac 側コピーの削除完了も記録済みなら、`closed` へ進める
+- `record_mac_deletion(store, session_id) -> Session` — Mac 側コピー削除完了の申告を記録する。実行直前に `mac_deletion_eligible` を再確認し、満たさなければ `DeletionGuardError`（状態・記録は変えない）。満たせば `mac_copy_deleted_at` を記録し、`final_saved` から `deletable` へ進める。VM 側コピーの削除完了も記録済みなら `closed` まで進める。既に記録済みの場合は冪等に成功し、初回の記録時刻を保持したまま状態の前進だけを再評価する
 - `mac_deletion_eligible(session) -> bool` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、要約が非公開リポジトリへ push 済み（`final_saved` 以降の状態で、`note_published_at` が記録されている）かつ未処理でないこと（`needs_reprocess` でないこと）を満たすときだけ True（期限（最長7日）は削除の許可条件ではない）
 - `find_overdue_unprocessed(store, now, days=7) -> list[Session]` — 正本 `../docs/状態管理.md`「削除の条件」のとおり、録音から `days` を超え、`final_saved` 未到達のセッション（削除用ではなく可視化・再処理用）
 
@@ -89,7 +90,7 @@
 
 ## CLI（`cli.py`）
 
-`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`pull`、`run`、`status`、`save-note`（要約の登録。対象は `work/<session_id>/note.md`）、`publish-note`（非公開リポジトリへの push。失敗時はイベントに `note_publish_failed` を記録し、終了コード 1）、`delete-vm-copy`、`mac-eligible`。データ領域は環境変数 `INTERVIEW_DATA_DIR`、push 先は `INTERVIEW_NOTES_REPO`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
+`python -m interview_pipeline <command>` の形で、最低限：`register`、`receive`、`pull`、`run`、`status`、`save-note`（要約の登録。対象は `work/<session_id>/note.md`）、`publish-note`（非公開リポジトリへの push。失敗時はイベントに `note_publish_failed` を記録し、終了コード 1）、`delete-vm-copy`、`mac-eligible`、`report-mac-deleted`（Mac 側コピー削除完了の申告。成功時は `<session_id> <state>` を出力して終了コード 0、ガード未達なら `DeletionGuardError` が伝播する）。データ領域は環境変数 `INTERVIEW_DATA_DIR`、push 先は `INTERVIEW_NOTES_REPO`（環境変数の定義は、正本 `../docs/状態管理.md`「データ領域と環境変数」を参照）。
 
 ## 決定事項
 
