@@ -24,6 +24,7 @@ from interview_pipeline.errors import MacFetchError, NotePublishError
 from interview_pipeline.guards import (
     execute_vm_deletion,
     mac_deletion_eligible,
+    record_mac_deletion,
 )
 from interview_pipeline.layout import (
     EVENTS_FILENAME,
@@ -140,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     p_mac = subparsers.add_parser("mac-eligible")
     p_mac.add_argument("session_id")
 
+    p_report_mac = subparsers.add_parser("report-mac-deleted")
+    p_report_mac.add_argument("session_id")
+
     args = parser.parse_args(argv)
     data_dir = _data_dir()
     store = _store(data_dir)
@@ -236,6 +240,11 @@ def main(argv: list[str] | None = None) -> int:
         eligible = mac_deletion_eligible(session)
         print("eligible" if eligible else "not-eligible")
         return 0 if eligible else 1
+
+    if args.command == "report-mac-deleted":
+        session = record_mac_deletion(store, args.session_id)
+        print(f"{session.session_id} {session.state.value}")
+        return 0
 
     parser.print_help()
     return 2

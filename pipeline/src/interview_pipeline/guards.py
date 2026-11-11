@@ -26,6 +26,7 @@ __all__ = [
     "find_audio_files",
     "find_overdue_unprocessed",
     "mac_deletion_eligible",
+    "record_mac_deletion",
     "vm_copy_deletable",
 ]
 
@@ -145,7 +146,49 @@ def execute_vm_deletion(store, session_id: str, inbox_dir: Path | str) -> Path:
             target.unlink()
     session.vm_copy_deleted_at = datetime.now(timezone.utc)
     store.save()
+    _close_if_deletions_completed(store, session)
     return target
+
+
+def _close_if_deletions_completed(store, session) -> None:
+    """両コピーの削除完了が揃っていたら ``closed`` へ進める。
+
+    正本 docs/状態管理.md「遷移条件」: ``deletable`` → ``closed`` の
+    条件は「VM側・Mac側の両コピーの削除完了を記録した」こと。
+    どちらの削除が後に記録されても、その記録時点で判定する。
+    """
+    if _state_name(session) != State.DELETABLE.value:
+        return
+    if session.vm_copy_deleted_at is None or session.mac_copy_deleted_at is None:
+        return
+    store.transition(session.session_id, State.CLOSED)
+
+
+def record_mac_deletion(store, session_id: str):
+    """Mac側コピー削除完了の申告を記録する。
+
+    実行直前に ``mac_deletion_eligible`` を再確認し、満たさなければ
+    ``DeletionGuardError`` で拒否して状態・記録を一切変えない
+    （fail-closed）。満たせば ``mac_copy_deleted_at`` を記録し、
+    ``final_saved`` から ``deletable`` へ進める。VM側コピーの削除
+    完了も記録済みなら ``closed`` まで進める。既に記録済みの場合は
+    冪等に成功し、初回の記録時刻を保持したまま状態の前進だけを
+    再評価する。
+    """
+    session = store.get(session_id)
+    if session.mac_copy_deleted_at is None:
+        if not mac_deletion_eligible(session):
+            raise DeletionGuardError(
+                "mac copy deletion is not reportable: note not published "
+                "or session needs reprocess"
+            )
+        session.mac_copy_deleted_at = datetime.now(timezone.utc)
+        store.save()
+    if _state_name(session) == State.FINAL_SAVED.value:
+        store.transition(session_id, State.DELETABLE)
+        session = store.get(session_id)
+    _close_if_deletions_completed(store, session)
+    return session
 
 
 def mac_deletion_eligible(session) -> bool:
