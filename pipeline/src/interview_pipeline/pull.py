@@ -160,7 +160,12 @@ class SshMacSource:
 
     def fetch_file(self, session_id: str, name: str) -> bytes:
         # 録音置き場の外を指す名前は取得対象にしない。
-        if "/" in session_id or "/" in name or name in ("", ".", ".."):
+        if (
+            "/" in session_id
+            or session_id in ("", ".", "..")
+            or "/" in name
+            or name in ("", ".", "..")
+        ):
             raise MacFetchError(f"invalid remote file: {session_id}/{name}")
         path = self._remote_path("recordings", session_id, name)
         return self._run_remote(

@@ -203,3 +203,42 @@ def test_sessions_with_distinct_timestamps_kept_separate(make_store, t0):
 
     assert store.get(SID).created_at == t0
     assert store.get(SID2).created_at == other_time
+
+
+def test_save_writes_atomically_and_leaves_no_temp_file(make_store, t0, tmp_path):
+    """save 後に一時ファイルが残らず、再読み込みできる内容が書かれる。"""
+    store = make_store()
+    store.register(SID, t0)
+    store.save()
+
+    path = tmp_path / "sessions.json"
+    assert path.is_file()
+    leftovers = [p for p in tmp_path.iterdir() if p.name != "sessions.json"]
+    assert leftovers == []
+
+    reloaded = make_store()
+    assert [s.session_id for s in reloaded.all()] == [SID]
+
+
+def test_save_failure_keeps_previous_file_and_cleans_temp(
+    make_store, t0, tmp_path, monkeypatch
+):
+    """差し替えに失敗しても既存ファイルは壊れず、一時ファイルも残らない。"""
+    import interview_pipeline.store as store_module
+
+    store = make_store()
+    store.register(SID, t0)
+    store.save()
+    path = tmp_path / "sessions.json"
+    before = path.read_bytes()
+
+    def failing_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(store_module.os, "replace", failing_replace)
+    with pytest.raises(OSError):
+        store.save()
+
+    assert path.read_bytes() == before
+    leftovers = [p for p in tmp_path.iterdir() if p.name != "sessions.json"]
+    assert leftovers == []

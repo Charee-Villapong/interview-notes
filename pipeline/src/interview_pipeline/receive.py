@@ -80,6 +80,14 @@ def _fail(store, session, reason: str) -> ReceiveResult:
     return ReceiveResult(ok=False, reason=reason)
 
 
+def _rollback_moved(moved: list[tuple[Path, Path]]) -> None:
+    """inbox へ移動済みのファイルを、staging 側の元の場所へ戻す。"""
+    for source, destination in reversed(moved):
+        if destination.is_file() and not source.exists():
+            source.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(destination), str(source))
+
+
 def verify_and_promote(
     store,
     manifest: Manifest,
@@ -96,6 +104,10 @@ def verify_and_promote(
 
     # 全ファイルの検証（1件でも不一致・欠落があれば昇格しない）。
     for entry in manifest.files:
+        if Path(entry.name).name != entry.name:
+            # 対象ディレクトリの外を指す名前は検証対象にしない
+            # （pull 側の取得時と同じ規則）。
+            return _fail(store, session, f"invalid file name: {entry.name}")
         candidate = staging / entry.name
         if not candidate.is_file():
             return _fail(store, session, f"missing file: {entry.name}")
@@ -114,15 +126,24 @@ def verify_and_promote(
                 f"sha256 mismatch: {entry.name}",
             )
 
-    # 全件一致した場合のみ inbox へ移動する。
+    # 全件一致した場合のみ inbox へ移動する。途中で失敗したら、移動済みの
+    # ファイルを staging へ戻してから失敗を返す（staging 側がそろった状態で
+    # ないと、次回の再検証が自己回復できないため）。
     inbox.mkdir(parents=True, exist_ok=True)
+    moved: list[tuple[Path, Path]] = []
     for entry in manifest.files:
         source = staging / entry.name
         destination = inbox / entry.name
         destination.parent.mkdir(parents=True, exist_ok=True)
         if source.is_file():
-            shutil.move(str(source), str(destination))
+            try:
+                shutil.move(str(source), str(destination))
+            except OSError:
+                _rollback_moved(moved)
+                return _fail(store, session, f"move failed: {entry.name}")
+            moved.append((source, destination))
         elif not destination.is_file():
+            _rollback_moved(moved)
             return _fail(store, session, f"missing file: {entry.name}")
 
     # 状態を received へ進める（現在状態に応じた正規経路を使う）。

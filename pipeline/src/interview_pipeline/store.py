@@ -12,6 +12,8 @@ SPEC ``store.py`` 契約と決定事項 8・9・10 に従う:
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,10 +212,20 @@ class SessionStore:
         payload = {
             "sessions": [session.to_dict() for session in self._sessions.values()]
         }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+        # 直接上書きすると書き込み途中の終了でファイルが壊れるため、
+        # 同じディレクトリの一時ファイルへ書いてから os.replace で
+        # 原子的に差し替える。
+        fd, tmp_name = tempfile.mkstemp(
+            dir=self.path.parent, prefix=self.path.name + ".", suffix=".tmp"
         )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            os.replace(tmp_name, self.path)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
 
     def load(self) -> None:
         if not self.path.exists():

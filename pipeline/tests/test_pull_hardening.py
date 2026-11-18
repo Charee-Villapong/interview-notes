@@ -74,3 +74,20 @@ def test_session_id_with_vm_suffix_is_accepted_shape():
     assert _SESSION_ID_PATTERN.match("2026-11-09_01-2")
     assert not _SESSION_ID_PATTERN.match("2026-11-09")
     assert not _SESSION_ID_PATTERN.match("recorded_01")
+
+
+def test_fetch_file_rejects_dot_session_ids():
+    """SshMacSource.fetch_file は session_id の "" / "." / ".." も弾く。
+
+    名前（name）側と同じ規則。検証は SSH 実行前に行われるため、
+    ダミーの接続情報でも MacFetchError になることだけを見る。
+    """
+    import pytest
+
+    from interview_pipeline.errors import MacFetchError
+    from interview_pipeline.pull import SshMacSource
+
+    source = SshMacSource("/dummy/mac-ssh", "/dummy/mac-app-data")
+    for bad_id in ("", ".", ".."):
+        with pytest.raises(MacFetchError):
+            source.fetch_file(bad_id, "system_track.m4a")

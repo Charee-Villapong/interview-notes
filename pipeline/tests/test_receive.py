@@ -217,3 +217,80 @@ def test_reverification_after_failure_creates_no_duplicate(
         "system_track.m4a",
         "mic_track.m4a",
     }
+
+
+def test_path_traversal_name_blocked(
+    make_store, drive_to, filekit, state_name, t0, tmp_path
+):
+    """マニフェストのファイル名が対象ディレクトリの外を指す場合は拒否する。
+
+    サイズ・SHA-256 が一致するファイルが staging の外にあっても、
+    移動も昇格もしない（cli receive 経路のパストラバーサル対策）。
+    """
+    import hashlib
+
+    from interview_pipeline.manifest import Manifest
+
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
+    outside = tmp_path / "evil.m4a"
+    outside.write_bytes(SYSTEM_DATA)
+    data = {
+        "session_id": SID,
+        "files": [
+            {
+                "name": "../evil.m4a",
+                "size": len(SYSTEM_DATA),
+                "sha256": hashlib.sha256(SYSTEM_DATA).hexdigest(),
+            }
+        ],
+    }
+    manifest = Manifest.from_dict(data)
+
+    result = _promote(store, manifest, staging_dir, inbox_dir)
+
+    assert result.ok is False
+    assert "invalid file name" in (result.reason or "")
+    # 外のファイルは動かされず、inbox にも入らない。
+    assert outside.read_bytes() == SYSTEM_DATA
+    assert _inbox_files(inbox_dir) == []
+    session = store.get(SID)
+    assert state_name(session.state) == "needs_reprocess"
+    assert session.error_kind == "transfer_verification_failed"
+
+
+def test_move_failure_rolls_back_already_moved_files(
+    make_store, drive_to, filekit, state_name, t0, tmp_path, monkeypatch
+):
+    """移動の途中で失敗したら、移動済みファイルを staging へ戻す。
+
+    戻し切れていないと staging がそろわず、再検証で自己回復できない。
+    """
+    import shutil as shutil_module
+
+    import interview_pipeline.receive as receive_module
+    from interview_pipeline.manifest import Manifest
+
+    store, staging_dir, inbox_dir = _setup_session(make_store, drive_to, t0, tmp_path)
+    for name, data in FILES:
+        filekit.write(staging_dir / name, data)
+    manifest = Manifest.from_dict(filekit.manifest_dict(SID, FILES))
+
+    real_move = shutil_module.move
+    calls = {"count": 0}
+
+    def flaky_move(src, dst):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise OSError("simulated move failure")
+        return real_move(src, dst)
+
+    monkeypatch.setattr(receive_module.shutil, "move", flaky_move)
+
+    result = _promote(store, manifest, staging_dir, inbox_dir)
+
+    assert result.ok is False
+    # 両ファイルとも staging にそろい、inbox には何も残らない。
+    assert (staging_dir / "system_track.m4a").read_bytes() == SYSTEM_DATA
+    assert (staging_dir / "mic_track.m4a").read_bytes() == MIC_DATA
+    assert _inbox_files(inbox_dir) == []
+    assert state_name(store.get(SID).state) == "needs_reprocess"
