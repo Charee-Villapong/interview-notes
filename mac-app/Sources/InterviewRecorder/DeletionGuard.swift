@@ -10,9 +10,8 @@ struct DeletionGuard {
 
     /// 削除可と確認できたセッションのローカル音声を削除する。
     /// 戻り値は削除したセッション ID。
-    /// 注意: VM 側へ削除完了を申告し `closed` へ進める手段は現行 CLI
-    /// に無く、連携事項として docs/P3計画.md に残してある。
-    /// ここでは Mac 側メタデータへの記録に留める。
+    /// 削除が完了したら VM 側 CLI の `report-mac-deleted` で申告する
+    /// （両側コピーの削除完了が揃うと VM 側で `closed` へ進む）。
     func deleteEligibleCopies() -> [String] {
         var deleted: [String] = []
         for session in store.sessions where session.macCopyDeletedAt == nil {
@@ -29,6 +28,9 @@ struct DeletionGuard {
             } catch {
                 continue
             }
+            // 削除完了を VM 側へ申告する。申告の成否に関わらず、
+            // ローカル側の削除記録は実態（削除済み）に合わせて残す。
+            _ = transfer.reportMacDeleted(sessionId: session.sessionId)
             var updated = session
             updated.macCopyDeletedAt = SessionStore.isoString(from: Date())
             updated.localPhase = "deleted"

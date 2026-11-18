@@ -65,13 +65,19 @@ final class SessionStore {
 
     /// 面談日付ベースのセッション ID を採番する（`YYYY-MM-DD_NN`。
     /// 正本 docs/状態管理.md「セッション識別子」）。
+    /// 同日の既存 ID の最大番号＋1 にする。件数＋1 だと、欠番がある
+    /// 場合に既存 ID と衝突するため。
     func nextSessionId(for date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         let day = formatter.string(from: date)
-        let count = sessions.filter { $0.sessionId.hasPrefix(day + "_") }.count
-        return String(format: "%@_%02d", day, count + 1)
+        let prefix = day + "_"
+        let maxNumber = sessions
+            .filter { $0.sessionId.hasPrefix(prefix) }
+            .compactMap { Int($0.sessionId.dropFirst(prefix.count)) }
+            .max() ?? 0
+        return String(format: "%@_%02d", day, maxNumber + 1)
     }
 
     static func isoString(from date: Date) -> String {

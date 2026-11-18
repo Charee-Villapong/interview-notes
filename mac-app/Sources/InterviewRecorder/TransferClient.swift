@@ -54,7 +54,8 @@ struct TransferClient {
     /// VM 側へセッションを登録する（冪等。初期状態は `recorded`）。
     func register(session: MacSession) throws {
         let command = pipelineCommand(
-            "register \(session.sessionId) --created-at \(shellQuote(session.createdAt))"
+            "register \(shellQuote(session.sessionId))"
+                + " --created-at \(shellQuote(session.createdAt))"
         )
         let (status, output) = runSSH(command)
         guard status == 0 else {
@@ -83,7 +84,7 @@ struct TransferClient {
     /// VM 側の受信検証を要求する。転送完了は VM 側でサイズ＋
     /// チェックサムが一致した時のみ（終了コード 0）。
     func receive(sessionId: String) -> Bool {
-        let (status, _) = runSSH(pipelineCommand("receive \(sessionId)"))
+        let (status, _) = runSSH(pipelineCommand("receive \(shellQuote(sessionId))"))
         return status == 0
     }
 
@@ -117,7 +118,19 @@ struct TransferClient {
     /// 判定条件の正本は docs/状態管理.md「削除の条件」で、
     /// Mac 側では再解釈しない。
     func macEligible(sessionId: String) -> Bool {
-        let (status, _) = runSSH(pipelineCommand("mac-eligible \(sessionId)"))
+        let (status, _) = runSSH(
+            pipelineCommand("mac-eligible \(shellQuote(sessionId))")
+        )
+        return status == 0
+    }
+
+    /// Mac 側コピーの削除完了を VM 側へ申告する。VM 側は受付直前に
+    /// 削除可否を再確認し、両側コピーの削除完了が揃った時点で
+    /// `closed` へ進める（正本 docs/状態管理.md「削除の条件」）。
+    func reportMacDeleted(sessionId: String) -> Bool {
+        let (status, _) = runSSH(
+            pipelineCommand("report-mac-deleted \(shellQuote(sessionId))")
+        )
         return status == 0
     }
 
@@ -125,7 +138,10 @@ struct TransferClient {
         let contents = (try? FileManager.default
             .contentsOfDirectory(at: sessionDir, includingPropertiesForKeys: nil)) ?? []
         return contents
-            .filter { $0.lastPathComponent != "manifest.json" }
+            .filter {
+                $0.lastPathComponent != "manifest.json"
+                    && $0.lastPathComponent != "capture-diag.json"
+            }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 }

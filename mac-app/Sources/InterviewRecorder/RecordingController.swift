@@ -100,19 +100,25 @@ final class RecordingController {
     /// 録音中表示・タイマ・セッション情報を開始前の状態へ戻す。
     /// この時点のセッションはストア未登録のため、作りかけの
     /// セッションフォルダも残さない。
+    /// 呼び出しは非 MainActor の Task から来るため、状態変数と
+    /// UI コールバック（`setPhase`）に触る処理はメインスレッドで実行する。
     private func rollbackFailedStart(sessionId: String) {
-        guard phase == .recording, currentSessionId == sessionId else { return }
-        tickTimer?.invalidate()
-        tickTimer = nil
-        micCapture.stop()
-        currentSessionId = nil
-        recordingStartedAt = nil
-        graceDeadline = nil
-        silenceMonitor.reset()
-        let sessionDir = AppConfig.recordingsDir()
-            .appendingPathComponent(sessionId, isDirectory: true)
-        try? FileManager.default.removeItem(at: sessionDir)
-        setPhase(.idle)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.phase == .recording,
+                  self.currentSessionId == sessionId else { return }
+            self.tickTimer?.invalidate()
+            self.tickTimer = nil
+            self.micCapture.stop()
+            self.currentSessionId = nil
+            self.recordingStartedAt = nil
+            self.graceDeadline = nil
+            self.silenceMonitor.reset()
+            let sessionDir = AppConfig.recordingsDir()
+                .appendingPathComponent(sessionId, isDirectory: true)
+            try? FileManager.default.removeItem(at: sessionDir)
+            self.setPhase(.idle)
+        }
     }
 
     /// 手動停止（主たる終了経路）。即時に転送対象にする
